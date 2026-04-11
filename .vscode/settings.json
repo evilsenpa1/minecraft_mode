@@ -1,0 +1,20 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "editor.formatOnSave": true,
+  "[java]": {
+    "editor.defaultFormatter": "redhat.java"
+  },
+  "gradle.nestedProjects": false,
+  "files.exclude": {
+    "**/.gradle": true,
+    "**/build": true,
+    "run/": true,
+    "run-data/": true,
+    "src/generated/": true
+  },
+  "search.exclude": {
+    "**/.gradle": true,
+    "**/build": true
+  }
+}

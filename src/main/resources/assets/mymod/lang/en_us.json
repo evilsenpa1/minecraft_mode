@@ -1,0 +1,9 @@
+{
+  "item.mymod.example_item": "Example Item",
+  "block.mymod.example_block": "Example Block",
+  "itemGroup.mymod.mymod_tab": "MyMod",
+
+  "key.categories.mymod": "MyMod",
+  "key.mymod.open_settings": "Open Arcane Settings",
+  "key.mymod.open_grimoire": "Open Grimoire of Knowledge"
+}

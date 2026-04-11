@@ -1,0 +1,9 @@
+{
+  "item.mymod.example_item": "Пример предмета",
+  "block.mymod.example_block": "Пример блока",
+  "itemGroup.mymod.mymod_tab": "MyMod",
+
+  "key.categories.mymod": "MyMod",
+  "key.mymod.open_settings": "Открыть настройки мода",
+  "key.mymod.open_grimoire": "Открыть Гримуар Знаний"
+}
