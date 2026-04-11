@@ -2,8 +2,11 @@ package com.example.mymod;
 
 import com.example.mymod.block.ModBlocks;
 import com.example.mymod.config.ModConfig;
+import com.example.mymod.effect.ModEffects;
+import com.example.mymod.entity.ModEntities;
 import com.example.mymod.item.ModItems;
 import com.example.mymod.network.ModNetwork;
+import com.example.mymod.spell.SpellRegistry;
 import com.example.mymod.tab.ModCreativeTabs;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.common.MinecraftForge;
@@ -28,11 +31,22 @@ public class MyMod {
         ModBlocks.register(modEventBus);
         ModItems.register(modEventBus);
 
-        // Регистрация клиентского конфига (файл mymod-client.toml в папке config/)
+        // Регистрация кастомных сущностей (снаряды, призванные мобы и т.п.)
+        ModEntities.ENTITY_TYPES.register(modEventBus);
+
+        // Регистрация кастомных эффектов (проклятья и т.п.)
+        ModEffects.register(modEventBus);
+
+        // Конфиг клиента (файл mymod-client.toml)
         ModLoadingContext.get().registerConfig(Type.CLIENT, ModConfig.SPEC, "mymod-client.toml");
 
-        // Регистрация сетевых пакетов (клиент ↔ сервер)
+        // Сетевые пакеты клиент ↔ сервер
         ModNetwork.register();
+
+        // Принудительная инициализация реестра заклинаний (static init)
+        // Нужно чтобы SpellRegistry.REGISTRY заполнился до начала игры
+        int spellCount = SpellRegistry.getAll().size();
+        LOGGER.info("[{}] Registered {} spells.", MOD_ID, spellCount);
 
         MinecraftForge.EVENT_BUS.register(this);
 

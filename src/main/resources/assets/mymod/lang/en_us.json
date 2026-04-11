@@ -1,9 +1,22 @@
 {
   "item.mymod.example_item": "Example Item",
   "block.mymod.example_block": "Example Block",
-  "itemGroup.mymod.mymod_tab": "MyMod",
+  "itemGroup.mymod.mymod_tab": "MyMod — Magic",
 
   "key.categories.mymod": "MyMod",
   "key.mymod.open_settings": "Open Arcane Settings",
-  "key.mymod.open_grimoire": "Open Grimoire of Knowledge"
+  "key.mymod.open_grimoire": "Open Grimoire of Knowledge",
+  "key.mymod.open_skill_tree": "Open Skill Tree",
+  "key.mymod.open_spell_wheel": "Open Spell Wheel",
+  "key.mymod.cast_spell": "Cast Spell",
+
+  "item.mymod.scroll_spark": "Scroll: Spark",
+  "item.mymod.scroll_holy_ray": "Scroll: Holy Ray",
+  "item.mymod.scroll_apprentice_curse": "Scroll: Apprentice's Curse",
+  "item.mymod.scroll_summon_chicken": "Scroll: Summon Chicken",
+
+  "effect.mymod.simple_curse": "Simple Curse",
+
+  "advancements.mymod.ozarenie_slepca.title": "Blind Man's Revelation",
+  "advancements.mymod.ozarenie_slepca.description": "You have climbed the first step of a thousand"
 }

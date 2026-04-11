@@ -36,8 +36,8 @@ public class GrimoireScreen extends Screen {
     private static final int HEADER_H  = 44;   // высота шапки
     private static final int TABS_H    = 20;   // высота строки вкладок
     private static final int MAIN_Y    = HEADER_H + TABS_H;  // y начала рабочей области
-    private static final int FOOTER_H  = 22;
-    private static final int MAIN_H    = H - MAIN_Y - FOOTER_H;
+    private static final int FOOTER_H  = 22;  // оставляем константу, но footer скрыт
+    private static final int MAIN_H    = H - MAIN_Y - 2; // рабочая область до самого низа
     private static final int LIST_W    = 120;  // ширина левой панели
     private static final int DIVIDER_W = 3;    // зазор между панелями
     private static final int MARGIN    = 8;
@@ -95,6 +95,12 @@ public class GrimoireScreen extends Screen {
     private int    contentScroll  = 0;   // пиксельный сдвиг прокрутки контента
     private int    hoveredEntry   = -1;
     private int    totalContentH  = 0;   // суммарная высота контента (для скроллбара)
+
+    // Перетаскивание ползунка скроллбара
+    private boolean draggingList    = false;
+    private boolean draggingContent = false;
+    private double  dragStartY      = 0;
+    private int     dragStartScroll = 0;
 
     private EditBox searchBox;
 
@@ -183,7 +189,6 @@ public class GrimoireScreen extends Screen {
         drawTabs(gfx, mx, my);
         drawListPanel(gfx, mx, my);
         drawContentPanel(gfx);
-        drawFooter(gfx, mx, my);
         drawStars(gfx);
 
         // Виджеты (EditBox поиска)
@@ -326,12 +331,21 @@ public class GrimoireScreen extends Screen {
                 gfx.fill(listX + 1, rowY, listX + listW2 - SCROLL_W - 1, rowY + ROW_H, C_ENTRY_HOV);
             }
 
-            // Текст (обрезаем если не влезает)
-            // plainSubstrByWidth принимает String и возвращает String — без путаницы с типами
+            // Текст: для выбранного — бегущая строка, для остальных — обрезка
             String prefix = sel ? "▶ " : "  ";
             int tc = sel ? C_ENTRY_TXT_S : (hov ? C_ENTRY_TXT_H : C_ENTRY_TXT);
-            String clipped = font.plainSubstrByWidth(prefix + visible.get(i).title(), textMaxW);
-            gfx.drawString(font, clipped, listX + 5, rowY + 3, tc, false);
+            String fullText = prefix + visible.get(i).title();
+            int fullW = font.width(fullText);
+            if (sel && fullW > textMaxW) {
+                // Бегущая строка для выбранного длинного заголовка
+                int marqueeOff = getMarqueeOffset(fullW, textMaxW);
+                gfx.enableScissor(listX + 5, rowY, listX + listW2 - SCROLL_W - 2, rowY + ROW_H);
+                gfx.drawString(font, fullText, listX + 5 - marqueeOff, rowY + 3, tc, false);
+                gfx.disableScissor();
+            } else {
+                String clipped = font.plainSubstrByWidth(fullText, textMaxW);
+                gfx.drawString(font, clipped, listX + 5, rowY + 3, tc, false);
+            }
         }
 
         gfx.disableScissor();
@@ -503,7 +517,29 @@ public class GrimoireScreen extends Screen {
             }
         }
 
-        // Клик по записи в списке
+        // Клик по скроллбару списка — начинаем перетаскивание
+        int sbListX = listX + listW2 - SCROLL_W;
+        if (button == 0 && mx >= sbListX && mx < sbListX + SCROLL_W
+                && my >= listY && my < listY + listH
+                && visible.size() * ROW_H > listH) {
+            draggingList    = true;
+            dragStartY      = my;
+            dragStartScroll = listScroll;
+            return true;
+        }
+
+        // Клик по скроллбару контента — начинаем перетаскивание
+        int sbContX = contX + contW - SCROLL_W;
+        if (button == 0 && mx >= sbContX && mx < sbContX + SCROLL_W
+                && my >= contY && my < contY + contH
+                && totalContentH > contH) {
+            draggingContent = true;
+            dragStartY      = my;
+            dragStartScroll = contentScroll;
+            return true;
+        }
+
+        // Клик по записи в списке (не попал на скроллбар)
         if (mx >= listX && mx < listX + listW2 && my >= listY && my < listY + listH) {
             int row = (int)((my - listY + listScroll) / ROW_H);
             if (row >= 0 && row < visible.size()) {
@@ -512,24 +548,43 @@ public class GrimoireScreen extends Screen {
             }
         }
 
-        // Клик по кнопкам Назад/Вперёд
-        int footY = wTop + H - FOOTER_H;
-        int btnH  = 14, btnW = 80, btnY = footY + 4;
-        int prevX = wLeft + W / 2 - btnW - 8;
-        int nextX = wLeft + W / 2 + 8;
-
-        if (my >= btnY && my < btnY + btnH) {
-            if (mx >= prevX && mx < prevX + btnW && selectedEntry > 0) {
-                selectEntry(selectedEntry - 1);
-                return true;
-            }
-            if (mx >= nextX && mx < nextX + btnW && selectedEntry < visible.size() - 1) {
-                selectEntry(selectedEntry + 1);
-                return true;
-            }
-        }
-
         return super.mouseClicked(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (draggingList) {
+            int total  = visible.size() * ROW_H;
+            if (total > listH) {
+                int trackH = listH - 2;
+                int thumbH = Math.max(10, trackH * listH / total);
+                // Сколько скролла приходится на один пиксель трека
+                double ratio = (double)(total - listH) / Math.max(1, trackH - thumbH);
+                int delta2   = (int)((my - dragStartY) * ratio);
+                int max      = Math.max(0, total - listH);
+                listScroll   = Math.max(0, Math.min(dragStartScroll + delta2, max));
+            }
+            return true;
+        }
+        if (draggingContent) {
+            if (totalContentH > contH) {
+                int trackH = contH - 2;
+                int thumbH = Math.max(10, trackH * contH / totalContentH);
+                double ratio  = (double)(totalContentH - contH) / Math.max(1, trackH - thumbH);
+                int delta2    = (int)((my - dragStartY) * ratio);
+                int max       = Math.max(0, totalContentH - contH);
+                contentScroll = Math.max(0, Math.min(dragStartScroll + delta2, max));
+            }
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        draggingList    = false;
+        draggingContent = false;
+        return super.mouseReleased(mx, my, button);
     }
 
     @Override
@@ -658,6 +713,30 @@ public class GrimoireScreen extends Screen {
                 }
             }
         }
+        // Нижний отступ: без него последняя строка обрезается из-за начального y+5
+        totalContentH += MARGIN + 5;
+    }
+
+    /**
+     * Вычисляет смещение бегущей строки для длинного заголовка.
+     * Анимация: пауза → прокрутка до конца → пауза → сброс.
+     *
+     * @param textW  реальная ширина текста в пикселях
+     * @param maxW   доступная ширина
+     * @return смещение в пикселях (0 — без сдвига)
+     */
+    private int getMarqueeOffset(int textW, int maxW) {
+        if (textW <= maxW) return 0;
+        int overflow  = textW - maxW + 4;   // сколько пикселей нужно прокрутить
+        int speedPxS  = 40;                  // скорость прокрутки: 40 px/сек
+        int pauseMs   = 1200;               // пауза в начале и конце
+        int scrollMs  = overflow * 1000 / speedPxS;
+        int periodMs  = pauseMs + scrollMs + pauseMs;
+        int phase     = (int)(System.currentTimeMillis() % periodMs);
+
+        if (phase < pauseMs)               return 0;
+        if (phase < pauseMs + scrollMs)    return (phase - pauseMs) * speedPxS / 1000;
+        return overflow;
     }
 
     /** @return индекс записи под курсором, или -1 */

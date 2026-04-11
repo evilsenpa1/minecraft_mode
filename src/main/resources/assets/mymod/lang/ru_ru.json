@@ -1,9 +1,22 @@
 {
   "item.mymod.example_item": "Пример предмета",
   "block.mymod.example_block": "Пример блока",
-  "itemGroup.mymod.mymod_tab": "MyMod",
+  "itemGroup.mymod.mymod_tab": "MyMod — Магия",
 
   "key.categories.mymod": "MyMod",
   "key.mymod.open_settings": "Открыть настройки мода",
-  "key.mymod.open_grimoire": "Открыть Гримуар Знаний"
+  "key.mymod.open_grimoire": "Открыть Гримуар Знаний",
+  "key.mymod.open_skill_tree": "Открыть Древо Познания",
+  "key.mymod.open_spell_wheel": "Открыть Колесо Заклинаний",
+  "key.mymod.cast_spell": "Применить заклинание",
+
+  "item.mymod.scroll_spark": "Свиток: Искра",
+  "item.mymod.scroll_holy_ray": "Свиток: Луч Святости",
+  "item.mymod.scroll_apprentice_curse": "Свиток: Проклятье Ученика",
+  "item.mymod.scroll_summon_chicken": "Свиток: Призыв Курицы",
+
+  "effect.mymod.simple_curse": "Простое проклятье",
+
+  "advancements.mymod.ozarenie_slepca.title": "Озарение слепца",
+  "advancements.mymod.ozarenie_slepca.description": "Вы поднялись на первую ступень из тысячи"
 }

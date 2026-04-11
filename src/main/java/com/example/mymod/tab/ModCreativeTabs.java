@@ -24,6 +24,11 @@ public class ModCreativeTabs {
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.EXAMPLE_ITEM.get());
                         output.accept(ModItems.EXAMPLE_BLOCK_ITEM.get());
+                        // Свитки заклинаний
+                        output.accept(ModItems.SCROLL_SPARK.get());
+                        output.accept(ModItems.SCROLL_HOLY_RAY.get());
+                        output.accept(ModItems.SCROLL_APPRENTICE_CURSE.get());
+                        output.accept(ModItems.SCROLL_SUMMON_CHICKEN.get());
                     })
                     .build());
 
