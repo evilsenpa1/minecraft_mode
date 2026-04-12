@@ -30,12 +30,27 @@ public class PlayerSkillsCapability implements IPlayerSkills {
     public static final Capability<IPlayerSkills> SKILLS =
             CapabilityManager.get(new CapabilityToken<>() {});
 
+    /**
+     * Ключ для резервной копии навыков в player.getPersistentData().
+     * Forge вызывает addListener(provider::invalidate) при удалении сущности,
+     * из-за чего LazyOptional инвалидируется ДО PlayerEvent.Clone — reviveCaps() не помогает.
+     * Решение: сохранять NBT навыков в persistentData при каждом изменении
+     * и восстанавливать из него в onPlayerClone если capability недоступен.
+     */
+    public static final String SKILLS_BACKUP_KEY = "mymod_skills_backup";
+
     /** Начальное количество очков навыков (достаточно для нескольких нод) */
-    private static final int STARTING_POINTS = 5;
+    public static final int STARTING_POINTS = 5;
 
     private int skillPoints = STARTING_POINTS;
     private final Set<String> unlockedNodes = new HashSet<>();
     private final Map<String, Integer> cooldowns = new HashMap<>();
+
+    /**
+     * Последний известный уровень опыта игрока.
+     * -1 = не инициализировано (первый тик — просто запомним уровень без начисления очков).
+     */
+    private int lastKnownLevel = -1;
 
     // Колесо заклинаний: 10 слотов, null = пусто
     private final String[] spellSlots = new String[SPELL_SLOTS];
@@ -73,6 +88,11 @@ public class PlayerSkillsCapability implements IPlayerSkills {
         }
         return bonus;
     }
+
+    // ─── Уровень игрока ───────────────────────────────────────────────────────
+
+    @Override public int getLastKnownLevel()        { return lastKnownLevel; }
+    @Override public void setLastKnownLevel(int lvl){ lastKnownLevel = lvl; }
 
     // ─── Кулдауны ─────────────────────────────────────────────────────────────
 
@@ -161,6 +181,7 @@ public class PlayerSkillsCapability implements IPlayerSkills {
         }
         tag.put("SpellSlots", slotList);
         tag.putInt("ActiveSlot", activeSlot);
+        tag.putInt("LastKnownLevel", lastKnownLevel);
 
         return tag;
     }
@@ -191,5 +212,6 @@ public class PlayerSkillsCapability implements IPlayerSkills {
             }
         }
         activeSlot = tag.contains("ActiveSlot") ? tag.getInt("ActiveSlot") : 0;
+        lastKnownLevel = tag.contains("LastKnownLevel") ? tag.getInt("LastKnownLevel") : -1;
     }
 }

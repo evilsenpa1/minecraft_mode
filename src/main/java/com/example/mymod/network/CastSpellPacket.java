@@ -73,14 +73,21 @@ public class CastSpellPacket {
 
         // 2. Получаем заклинание из активного слота
         String spellId = skills.getSpellInSlot(skills.getActiveSlot());
-        if (spellId == null) {
+        // Проверяем и на null, и на пустую строку — защита от рассинхрона клиент/сервер
+        if (spellId == null || spellId.isEmpty()) {
             player.sendSystemMessage(Component.literal(
                     "§8✗ Активный слот пуст. §7Откройте колесо заклинаний (R)."));
             return;
         }
 
         Spell spell = SpellRegistry.get(spellId);
-        if (spell == null) return; // заклинание удалено из регистра
+        if (spell == null) {
+            // Заклинание удалено из регистра — очищаем слот чтобы не сломать дальнейшие каты
+            skills.setSpellInSlot(skills.getActiveSlot(), null);
+            player.sendSystemMessage(Component.literal(
+                    "§8✗ Заклинание не найдено. Слот очищен."));
+            return;
+        }
 
         // 3. Нода заклинания должна быть открыта (дополнительная серверная проверка)
         boolean nodeUnlocked = isSpellNodeUnlocked(skills, spellId);

@@ -439,6 +439,12 @@ public class SkillTreeScreen extends Screen {
      */
     private int renderNodeInfo(GuiGraphics gfx, int px, int startY, int pw,
                                 SkillNode node, int mouseX, int mouseY) {
+        // Сбрасываем состояние кнопок в начале каждого кадра —
+        // иначе при смене ноды на ноду без заклинания остаются «призрачные» области
+        learnBtnX    = -1;
+        wheelBtnRowY = -1;
+        selectedSpellId = null;
+
         int y     = startY;
         boolean unlocked  = unlockedNodes.contains(node.getId());
         boolean available = isAvailable(node);

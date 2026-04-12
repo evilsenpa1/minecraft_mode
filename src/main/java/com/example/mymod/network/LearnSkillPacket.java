@@ -1,6 +1,7 @@
 package com.example.mymod.network;
 
 import com.example.mymod.MyMod;
+import com.example.mymod.event.ModEvents;
 import com.example.mymod.skill.IPlayerSkills;
 import com.example.mymod.skill.PlayerSkillsCapability;
 import com.example.mymod.skill.SkillNode;
@@ -92,6 +93,11 @@ public class LearnSkillPacket {
         // Всё ок — разблокируем ноду
         skills.unlockNode(node.getId());
         skills.setSkillPoints(skills.getSkillPoints() - node.getCost());
+
+        // Сразу сохраняем резервную копию навыков в persistentData.
+        // Это критично: резервная копия используется onPlayerClone при смерти
+        // (LazyOptional capability инвалидируется раньше Clone-события).
+        ModEvents.saveSkillsBackup(player);
 
         // Специальные эффекты конкретных нод
         onNodeUnlocked(player, node);

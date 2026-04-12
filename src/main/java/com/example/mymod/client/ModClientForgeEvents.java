@@ -93,7 +93,8 @@ public class ModClientForgeEvents {
                     .map(s -> s.getSpellInSlot(s.getActiveSlot()))
                     .orElse(null);
 
-            if (spellId == null) {
+            // Проверяем и null, и пустую строку — защита от рассинхрона capability
+            if (spellId == null || spellId.isEmpty()) {
                 mc.player.displayClientMessage(
                         net.minecraft.network.chat.Component.literal(
                                 "§8✗ Активный слот пуст. §7[R] §8— колесо заклинаний."),

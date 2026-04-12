@@ -208,29 +208,35 @@ public class ManaOverlay {
     // =========================================================================
 
     /**
-     * Рисует вертикальную кристальную полоску маны на правой стороне экрана.
-     * Стилистика: магический кристальный сосуд с золотой рамкой и огранёнными кристаллами.
+     * Рисует вертикальный магический столп — «Кристальный Портал».
+     * Стилистика: высокая золотая рама с синим свечением внутри (как портал/туманность),
+     * кристаллы сверху и снизу, рассеянные звёздочки вокруг. Без цифр и процентов.
+     *
+     * Позиция: правая сторона экрана, вертикальный центр.
      *
      * Анимированные элементы:
-     *   — Пульсирующее синее/фиолетовое свечение вокруг рамки (3 слоя)
-     *   — Золотая рамка с 3D-бликами и золотыми платформами сверху/снизу
-     *   — Заполнение: диагональный волновой градиент (тёмный край → белый центр)
+     *   — Трёхслойное пульсирующее синее/фиолетовое свечение вокруг рамки
+     *   — Массивная золотая рамка с угловыми акцентами и 3D-бликами
+     *   — Ступенчатые золотые постаменты сверху и снизу с боковыми «колоннами»
+     *   — Заполнение: тёмно-синий край → ярко-белый/голубой центр (портальный градиент)
+     *   — Мерцающие внутренние звёзды (статичные + крупные крестообразные)
      *   — Три движущихся горизонтальных блика с разной скоростью
-     *   — Мерцающие молниеподобные трещины внутри бара
-     *   — Случайные искры-блёстки (белые и голубые, иногда 2×2)
-     *   — Кристаллы (центральный голубой + боковые фиолетовые) сверху и снизу
+     *   — Молниеподобные энергетические трещины
+     *   — Пульсирующая верхняя кромка заполнения (белая линия)
+     *   — Кластер кристаллов сверху (2 внешних + 2 средних фиолетовых + 1 центральный голубой)
+     *   — Кластер кристаллов снизу (4 фиолетовых + 1 центральный голубой)
      *   — Пульсирующее свечение вокруг кристаллов
-     *   — Внешние мерцающие звёздочки вокруг элемента
+     *   — 12 внешних мерцающих звёздочек разного цвета
      */
     private static void renderVerticalBarStyle(GuiGraphics gfx,
                                                 int current, int max,
                                                 int screenW, int screenH) {
         // ── Геометрия ────────────────────────────────────────────────────────
-        final int BAR_W        = 18;  // ширина внутреннего бара
-        final int BAR_H        = 160; // высота внутреннего бара
-        final int FRAME_T      = 2;   // толщина золотой рамки
-        final int MARGIN_RIGHT = 24;  // отступ от правого края экрана
-        final int ORN_EXTRA    = 5;   // выступ платформы за рамку с каждой стороны
+        final int BAR_W        = 20;  // ширина внутреннего бара
+        final int BAR_H        = 185; // высота внутреннего бара
+        final int FRAME_T      = 3;   // толщина золотой рамки
+        final int MARGIN_RIGHT = 22;  // отступ от правого края экрана
+        final int PLT_EXTRA    = 7;   // выступ постамента за рамку с каждой стороны
 
         int barX   = screenW - MARGIN_RIGHT - BAR_W;
         int barY   = screenH / 2 - BAR_H / 2;
@@ -253,167 +259,201 @@ public class ManaOverlay {
         long   now = System.currentTimeMillis();
         double PI2 = Math.PI * 2;
 
-        // ── 1. Пульсирующее внешнее свечение (3 слоя) ────────────────────────
+        // ── 1. Трёхслойное пульсирующее внешнее свечение ─────────────────────
         float glowPulse = (float)(Math.sin((now % 2000) / 2000.0 * PI2) * 0.5 + 0.5);
-        int gA1 = (int)(0x22 + glowPulse * 0x18);
-        int gA2 = (int)(0x10 + glowPulse * 0x10);
-        int gA3 = (int)(0x06 + glowPulse * 0x07);
-        // Учёт места под кристаллы: ~28px сверху, ~16px снизу
-        gfx.fill(frameL - 10, frameT - 28, frameR + 10, frameB + 16, argb(gA1, 0x20, 0x50, 0xFF));
-        gfx.fill(frameL - 18, frameT - 36, frameR + 18, frameB + 24, argb(gA2, 0x18, 0x40, 0xCC));
-        gfx.fill(frameL - 28, frameT - 46, frameR + 28, frameB + 34, argb(gA3, 0x10, 0x28, 0x99));
+        int gA1 = (int)(0x28 + glowPulse * 0x1C);
+        int gA2 = (int)(0x12 + glowPulse * 0x12);
+        int gA3 = (int)(0x07 + glowPulse * 0x09);
+        // Зоны свечения с учётом кристаллов (~36px сверху, ~22px снизу)
+        gfx.fill(frameL - 10, frameT - 36, frameR + 10, frameB + 22, argb(gA1, 0x20, 0x55, 0xFF));
+        gfx.fill(frameL - 22, frameT - 48, frameR + 22, frameB + 34, argb(gA2, 0x15, 0x40, 0xCC));
+        gfx.fill(frameL - 36, frameT - 62, frameR + 36, frameB + 48, argb(gA3, 0x08, 0x25, 0x99));
 
         // ── 2. Тёмная подложка под элементом ────────────────────────────────
-        gfx.fill(frameL - 2, frameT - 2, frameR + 2, frameB + 2, 0xBB000011);
+        gfx.fill(frameL - 3, frameT - 3, frameR + 3, frameB + 3, 0xCC000011);
 
-        // ── 3. Золотая рамка (3D: блик сверху-слева, тень снизу-справа) ─────
-        gfx.fill(frameL - 1, frameT - 1, frameR + 1, frameB + 1, 0xFF7A5A10); // внешний обвод
-        gfx.fill(frameL,     frameT,     frameR,     frameB,     0xFFCC9820); // основной золотой
-        gfx.fill(frameL,     frameT,     frameR,     frameT + 1, 0xFFFFD700); // верхний блик
-        gfx.fill(frameL,     frameT,     frameL + 1, frameB,     0xFFFFD700); // левый блик
-        gfx.fill(frameL,     frameB - 1, frameR,     frameB,     0xFF8B6914); // нижняя тень
-        gfx.fill(frameR - 1, frameT,     frameR,     frameB,     0xFF8B6914); // правая тень
+        // ── 3. Золотая рамка (многослойная 3D) ───────────────────────────────
+        gfx.fill(frameL - 1, frameT - 1, frameR + 1, frameB + 1, 0xFF5A3D08); // внешний тёмный обвод
+        gfx.fill(frameL,     frameT,     frameR,     frameB,     0xFFCC9820); // основное золото
+        gfx.fill(frameL + 1, frameT + 1, frameR - 1, frameB - 1, 0xFFD4A830); // внутреннее золото
+        gfx.fill(frameL,     frameT,     frameR,     frameT + 1, 0xFFFFE060); // верхний блик
+        gfx.fill(frameL,     frameT,     frameL + 1, frameB,     0xFFFFE060); // левый блик
+        gfx.fill(frameL,     frameB - 1, frameR,     frameB,     0xFF7A5210); // нижняя тень
+        gfx.fill(frameR - 1, frameT,     frameR,     frameB,     0xFF7A5210); // правая тень
+        // Угловые золотые акценты (3×3 пикселя)
+        gfx.fill(frameL - 1, frameT - 1, frameL + 2, frameT + 2, 0xFFFFD700);
+        gfx.fill(frameR - 2, frameT - 1, frameR + 1, frameT + 2, 0xFFFFD700);
+        gfx.fill(frameL - 1, frameB - 2, frameL + 2, frameB + 1, 0xFFFFD700);
+        gfx.fill(frameR - 2, frameB - 2, frameR + 1, frameB + 1, 0xFFFFD700);
 
         // ── 4. Тёмный фон внутри бара ────────────────────────────────────────
-        gfx.fill(barX, barY, barX + BAR_W, barBot, 0xFF030310);
+        gfx.fill(barX, barY, barX + BAR_W, barBot, 0xFF010115);
 
-        // ── 5. Заполнение с анимированным диагональным градиентом ────────────
+        // ── 5. Заполнение: портальный градиент (тёмный край → белый центр) ───
         if (fillH > 0) {
-            // Базовый цвет переливается: синий ↔ фиолетово-синий (период 3 с)
+            // Фаза цвета: синий ↔ слегка фиолетово-синий (период 3 с)
             float colorPhase = (float)(Math.sin((now % 3000) / 3000.0 * PI2) * 0.5 + 0.5);
-            // Яркость центральной «оси» пульсирует (период 1.5 с)
-            float centerGlow = (float)(Math.sin((now % 1500) / 1500.0 * PI2) * 0.2 + 0.8);
+            // Пульс яркости центра (период 1.2 с)
+            float centerPulse = (float)(Math.sin((now % 1200) / 1200.0 * PI2) * 0.15 + 0.85);
 
-            // Каждая вертикальная колонка имеет свою фазу → диагональная волна цвета
+            // По колонкам: создаём эффект яркого портального окна
+            // distC: 0.0 = центр бара, 1.0 = левый/правый край
             for (int col = 0; col < BAR_W; col++) {
                 int   x     = barX + col;
-                float distT = Math.abs(col - BAR_W / 2) / (float)(BAR_W / 2); // 0=центр, 1=край
-                float lp    = (float)(Math.sin(
-                        ((now % 2500) / 2500.0 - col / (double)BAR_W * 0.6) * PI2
-                ) * 0.5 + 0.5); // локальная фаза со сдвигом по X
+                float distC = Math.abs(col - (BAR_W - 1) * 0.5f) / ((BAR_W - 1) * 0.5f);
+                // Волна со смещением по колонке — имитирует «движение» в портале
+                float wave = (float)(Math.sin(
+                        ((now % 2000) / 2000.0 - col / (double)BAR_W * 0.5) * PI2
+                ) * 0.5 + 0.5);
 
-                // Центр = ярко-белый/голубой; край = тёмно-синий
-                int r = Math.min(255, (int)(lerpInt(
-                        lerpInt(0xCC, 0xDD, colorPhase),
-                        lerpInt(0x05, 0x22, colorPhase), distT) * (0.6f + lp * 0.4f) * centerGlow));
-                int g = Math.min(255, (int)(lerpInt(
-                        lerpInt(0xCC, 0x80, colorPhase),
-                        lerpInt(0x05, 0x08, colorPhase), distT) * (0.6f + lp * 0.4f) * centerGlow));
-                int b = Math.min(255, (int)(lerpInt(
-                        0xFF, lerpInt(0x40, 0x60, colorPhase), distT) * (0.7f + lp * 0.3f)));
+                // Центр: ярко-белый/голубой; край: тёмно-синий (квадратичное затухание)
+                float bright = (1.0f - distC * distC) * centerPulse;
+                int r = Math.min(255, (int)(
+                        lerpInt(lerpInt(0x05, 0x28, colorPhase), 255, bright) * (0.7f + wave * 0.3f)));
+                int g = Math.min(255, (int)(
+                        lerpInt(lerpInt(0x08, 0x18, colorPhase), 238, bright) * (0.7f + wave * 0.3f)));
+                int b = Math.min(255, (int)(
+                        lerpInt(lerpInt(0x55, 0x80, colorPhase), 255, bright) * (0.8f + wave * 0.2f)));
 
                 gfx.fill(x, fillTop, x + 1, barBot, argb(0xFF, r, g, b));
             }
 
-            // ── Три движущихся горизонтальных блика (снизу вверх) ─────────────
-            int s1cy = fillTop + (int)((now % 1800) / 1800.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 2, barX + BAR_W - 2, s1cy,
-                    Math.max(3, fillH / 7), fillTop, barBot, 0x5588CCFF);
-
-            int s2cy = fillTop + (int)((now % 3500) / 3500.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 4, barX + BAR_W - 4, s2cy,
-                    Math.max(2, fillH / 12), fillTop, barBot, 0x88FFFFFF);
-
-            int s3cy = fillTop + (int)((now % 5000) / 5000.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 1, barX + BAR_W - 1, s3cy,
-                    Math.max(8, fillH / 4), fillTop, barBot, 0x224488FF);
-
-            // ── Молниеподобные трещины (случайные, мерцают) ──────────────────
-            Random lRng = new Random((now / 350) * 6113L);
-            if (fillH > 30 && lRng.nextFloat() < 0.35f) {
-                int lx  = barX + 3 + lRng.nextInt(BAR_W - 6);
-                int len = Math.min(fillH / 2, 20 + lRng.nextInt(25));
-                int ly0 = fillTop + lRng.nextInt(Math.max(1, fillH - len));
-                int ltA = (int)((Math.sin((now % 300) / 300.0 * PI2) * 0.3 + 0.7) * 0xCC);
-                for (int ly = ly0; ly < ly0 + len; ly += 2) {
-                    int off = (lRng.nextBoolean() ? 1 : -1) * (1 + lRng.nextInt(2));
-                    lx = Math.max(barX + 1, Math.min(barX + BAR_W - 2, lx + off));
-                    gfx.fill(lx, ly, lx + 1, ly + 2, argb(ltA, 0xCC, 0xEE, 0xFF));
-                }
-            }
-
-            // ── Искры-блёстки внутри бара ────────────────────────────────────
-            Random sparkRng = new Random(now / 100);
-            for (int i = 0; i < 12; i++) {
-                int sx = barX + 1 + sparkRng.nextInt(BAR_W - 2);
-                int sy = fillTop + sparkRng.nextInt(Math.max(1, fillH));
-                if (sparkRng.nextFloat() < 0.55f) {
-                    boolean white = sparkRng.nextFloat() < 0.4f;
-                    gfx.fill(sx, sy, sx + 1, sy + 1, white ? 0xFFFFFFFF : 0xFF88DDFF);
-                    if (white && sparkRng.nextFloat() < 0.3f) {
-                        gfx.fill(sx, sy, sx + 2, sy + 2, 0x55FFFFFF); // 2×2 крупная блёстка
+            // ── Мерцающие внутренние звёзды (туманность/портал) ──────────────
+            // Seed меняется каждые 500 мс — звёзды плавно обновляются
+            Random starRng = new Random((now / 500) * 3571L);
+            for (int i = 0; i < 20; i++) {
+                int sx = barX + 1 + starRng.nextInt(BAR_W - 2);
+                int sy = fillTop + starRng.nextInt(Math.max(1, fillH));
+                if (starRng.nextFloat() < 0.60f) {
+                    boolean isBright = starRng.nextFloat() < 0.30f;
+                    gfx.fill(sx, sy, sx + 1, sy + 1, isBright ? 0xFFFFFFFF : 0xFFBBEEFF);
+                    if (isBright && starRng.nextFloat() < 0.45f) {
+                        // Крестообразная крупная звёздочка
+                        gfx.fill(sx - 1, sy, sx + 2, sy + 1, 0x77FFFFFF);
+                        gfx.fill(sx, sy - 1, sx + 1, sy + 2, 0x77FFFFFF);
                     }
                 }
             }
 
-            // ── Пульсирующая верхняя кромка заполнения ───────────────────────
-            float ep = (float)(Math.sin((now % 600) / 600.0 * PI2) * 0.5 + 0.5);
+            // ── Три движущихся горизонтальных блика ───────────────────────────
+            int s1cy = fillTop + (int)((now % 1600) / 1600.0 * fillH);
+            drawHorizontalShimmer(gfx, barX + 3, barX + BAR_W - 3, s1cy,
+                    Math.max(3, fillH / 8), fillTop, barBot, 0x4488DDFF);
+
+            int s2cy = fillTop + (int)((now % 2800) / 2800.0 * fillH);
+            drawHorizontalShimmer(gfx, barX + 5, barX + BAR_W - 5, s2cy,
+                    Math.max(2, fillH / 14), fillTop, barBot, 0xAAFFFFFF);
+
+            int s3cy = fillTop + (int)((now % 4500) / 4500.0 * fillH);
+            drawHorizontalShimmer(gfx, barX + 1, barX + BAR_W - 1, s3cy,
+                    Math.max(6, fillH / 5), fillTop, barBot, 0x1A5599FF);
+
+            // ── Энергетические трещины (молниеподобные) ───────────────────────
+            Random lRng = new Random((now / 400) * 7919L);
+            if (fillH > 25 && lRng.nextFloat() < 0.40f) {
+                int lx  = barX + 3 + lRng.nextInt(BAR_W - 6);
+                int len = Math.min(fillH / 2, 28 + lRng.nextInt(20));
+                int ly0 = fillTop + lRng.nextInt(Math.max(1, fillH - len));
+                int ltA = (int)((Math.sin((now % 250) / 250.0 * PI2) * 0.3 + 0.7) * 0xDD);
+                for (int ly = ly0; ly < ly0 + len; ly += 2) {
+                    int off = (lRng.nextBoolean() ? 1 : -1) * (1 + lRng.nextInt(2));
+                    lx = Math.max(barX + 1, Math.min(barX + BAR_W - 2, lx + off));
+                    gfx.fill(lx, ly, lx + 1, ly + 2, argb(ltA, 0xDD, 0xF0, 0xFF));
+                }
+            }
+
+            // ── Пульсирующая верхняя кромка заполнения (белая) ───────────────
+            float ep = (float)(Math.sin((now % 500) / 500.0 * PI2) * 0.5 + 0.5);
             gfx.fill(barX,     fillTop,     barX + BAR_W,     fillTop + 1,
-                    argb((int)(0x99 + ep * 0x66), 0xFF, 0xFF, 0xFF));
+                    argb((int)(0xAA + ep * 0x55), 0xFF, 0xFF, 0xFF));
             gfx.fill(barX + 2, fillTop + 1, barX + BAR_W - 2, fillTop + 2,
-                    argb((int)(ep * 0xAA), 0xAA, 0xDD, 0xFF));
+                    argb((int)(ep * 0xBB), 0xCC, 0xEE, 0xFF));
         }
 
-        // ── 6. Золотые платформы сверху и снизу рамки ────────────────────────
-        int ornW = ORN_EXTRA;
-        // Верхняя платформа (чуть шире рамки)
-        gfx.fill(frameL - ornW, frameT - 4, frameR + ornW, frameT,     0xFF8B6914); // тёмное основание
-        gfx.fill(frameL - ornW, frameT - 3, frameR + ornW, frameT,     0xFFCC9820); // золото
-        gfx.fill(frameL - ornW, frameT - 3, frameR + ornW, frameT - 2, 0xFFFFD700); // блик
-        // Нижняя платформа
-        gfx.fill(frameL - ornW, frameB,     frameR + ornW, frameB + 4, 0xFF8B6914);
-        gfx.fill(frameL - ornW, frameB,     frameR + ornW, frameB + 3, 0xFFCC9820);
-        gfx.fill(frameL - ornW, frameB + 1, frameR + ornW, frameB + 2, 0xFFFFD700);
+        // ── 6. Ступенчатые постаменты сверху и снизу ─────────────────────────
+        int pW = PLT_EXTRA;
+
+        // Верхний постамент (две ступени + боковые «колонны»)
+        gfx.fill(frameL - pW,     frameT - 6,  frameR + pW,     frameT,     0xFF7A5210); // тёмное основание
+        gfx.fill(frameL - pW,     frameT - 5,  frameR + pW,     frameT,     0xFFCC9820); // основное золото
+        gfx.fill(frameL - pW,     frameT - 5,  frameR + pW,     frameT - 4, 0xFFFFE060); // блик
+        gfx.fill(frameL - pW + 2, frameT - 3,  frameR + pW - 2, frameT,     0xFFD4A830); // нижняя ступень
+        // Боковые вертикальные акценты («колонны»)
+        gfx.fill(frameL - pW - 2, frameT - 8,  frameL - pW + 2, frameT,     0xFFCC9820);
+        gfx.fill(frameR + pW - 2, frameT - 8,  frameR + pW + 2, frameT,     0xFFCC9820);
+        gfx.fill(frameL - pW - 2, frameT - 8,  frameL - pW + 2, frameT - 7, 0xFFFFE060);
+        gfx.fill(frameR + pW - 2, frameT - 8,  frameR + pW + 2, frameT - 7, 0xFFFFE060);
+
+        // Нижний постамент (аналогичный)
+        gfx.fill(frameL - pW,     frameB,      frameR + pW,     frameB + 6, 0xFF7A5210);
+        gfx.fill(frameL - pW,     frameB,      frameR + pW,     frameB + 5, 0xFFCC9820);
+        gfx.fill(frameL - pW,     frameB + 1,  frameR + pW,     frameB + 2, 0xFFFFE060);
+        gfx.fill(frameL - pW + 2, frameB,      frameR + pW - 2, frameB + 3, 0xFFD4A830);
+        gfx.fill(frameL - pW - 2, frameB,      frameL - pW + 2, frameB + 8, 0xFFCC9820);
+        gfx.fill(frameR + pW - 2, frameB,      frameR + pW + 2, frameB + 8, 0xFFCC9820);
+        gfx.fill(frameL - pW - 2, frameB + 7,  frameL - pW + 2, frameB + 8, 0xFF7A5210);
+        gfx.fill(frameR + pW - 2, frameB + 7,  frameR + pW + 2, frameB + 8, 0xFF7A5210);
 
         // ── 7. Анимация цвета кристаллов ─────────────────────────────────────
-        float cp1 = (float)(Math.sin((now % 2000) / 2000.0 * PI2) * 0.5 + 0.5); // голубой
-        float cp2 = (float)(Math.sin((now % 2700) / 2700.0 * PI2 + 1.0) * 0.5 + 0.5); // фиолетовый
+        float cp1 = (float)(Math.sin((now % 2200) / 2200.0 * PI2) * 0.5 + 0.5); // голубой
+        float cp2 = (float)(Math.sin((now % 3100) / 3100.0 * PI2 + 1.2) * 0.5 + 0.5); // фиолетовый
 
-        int cyanR = lerpInt(0x44, 0x99, cp1), cyanG = lerpInt(0xCC, 0xFF, cp1);
-        int cyanMain  = argb(0xFF, cyanR, cyanG, 0xFF);
-        int cyanShine = argb(0xFF, Math.min(255, cyanR + 0x55), Math.min(255, cyanG + 0x10), 0xFF);
+        int cR1 = lerpInt(0x44, 0xAA, cp1), cG1 = lerpInt(0xBB, 0xFF, cp1);
+        int cyanMain  = argb(0xFF, cR1, cG1, 0xFF);
+        int cyanShine = argb(0xFF, Math.min(255, cR1 + 60), Math.min(255, cG1 + 10), 0xFF);
+        int cyanGlow  = argb(0xBB, Math.min(255, cR1 + 100), Math.min(255, cG1 + 20), 0xFF);
 
-        int purpR = lerpInt(0x66, 0xAA, cp2), purpG = lerpInt(0x08, 0x20, cp2), purpB = lerpInt(0xCC, 0xFF, cp2);
-        int purpleMain  = argb(0xFF, purpR, purpG, purpB);
-        int purpleShine = argb(0xFF, Math.min(255, purpR + 0x44), Math.min(255, purpG + 0x20), 0xFF);
+        int pR = lerpInt(0x77, 0xBB, cp2), pG = lerpInt(0x08, 0x30, cp2), pB = lerpInt(0xCC, 0xFF, cp2);
+        int purpleMain  = argb(0xFF, pR, pG, pB);
+        int purpleShine = argb(0xFF, Math.min(255, pR + 50), Math.min(255, pG + 20), 0xFF);
 
-        // ── 8. Кристаллы сверху (острием вверх) ─────────────────────────────
-        // Нижняя опорная точка кристаллов = верх золотой платформы
-        int topBase = frameT - 4;
-        // Боковые фиолетовые кристаллы (рисуем первыми — они «за» центральным)
-        drawCrystalUp(gfx, barCX - 8, topBase - 9,  4, 9,  purpleMain, purpleShine);
-        drawCrystalUp(gfx, barCX + 8, topBase - 8,  4, 8,  purpleMain, purpleShine);
-        // Центральный голубой кристалл (самый высокий)
-        drawCrystalUp(gfx, barCX,     topBase - 14, 6, 14, cyanMain, cyanShine);
-        // Пульсирующее свечение вокруг верхних кристаллов
-        float cg = (float)(Math.sin((now % 1600) / 1600.0 * PI2) * 0.5 + 0.5);
-        gfx.fill(barCX - 15, topBase - 22, barCX + 15, topBase + 1,
-                  argb((int)(0x15 + cg * 0x20), 0x44, 0xAA, 0xFF));
+        // ── 8. Кластер кристаллов сверху (острием вверх) ─────────────────────
+        int topBase = frameT - 6; // нижняя опорная точка верхних кристаллов
 
-        // ── 9. Кристаллы снизу (острием вниз) ───────────────────────────────
-        int botBase = frameB + 4; // верхняя опорная точка нижних кристаллов
-        drawCrystalDown(gfx, barCX - 7, botBase + 7,  3, 7,  purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX + 7, botBase + 7,  3, 7,  purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX,     botBase + 11, 5, 11, cyanMain, cyanShine);
-        gfx.fill(barCX - 12, botBase - 1, barCX + 12, botBase + 14,
-                  argb((int)(0x15 + cg * 0x18), 0x44, 0xAA, 0xFF));
+        float cg = (float)(Math.sin((now % 1800) / 1800.0 * PI2) * 0.5 + 0.5);
+        gfx.fill(barCX - 20, topBase - 28, barCX + 20, topBase + 2,
+                  argb((int)(0x18 + cg * 0x25), 0x44, 0xAA, 0xFF));
 
-        // ── 10. Внешние мерцающие звёздочки ──────────────────────────────────
-        int[][] starPos  = {
-            {barX - 14, barY + 25},  {barX + BAR_W + 13, barY + 40},
-            {barX - 18, barY + 75},  {barX + BAR_W + 16, barY + 90},
-            {barX - 12, barY + 125}, {barX + BAR_W + 10, barY + 135},
-            {barX - 8,  barY - 30},  {barX + BAR_W + 8,  barY - 14},
+        // Внешние маленькие фиолетовые (самые крайние)
+        drawCrystalUp(gfx, barCX - 14, topBase - 8,  3, 8,  purpleMain, purpleShine);
+        drawCrystalUp(gfx, barCX + 14, topBase - 7,  3, 7,  purpleMain, purpleShine);
+        // Средние фиолетовые
+        drawCrystalUp(gfx, barCX - 8,  topBase - 14, 4, 14, purpleMain, purpleShine);
+        drawCrystalUp(gfx, barCX + 8,  topBase - 13, 4, 13, purpleMain, purpleShine);
+        // Центральный голубой (самый высокий, с дополнительным бликом)
+        drawCrystalUp(gfx, barCX,      topBase - 20, 6, 20, cyanMain, cyanShine);
+        drawCrystalUp(gfx, barCX,      topBase - 20, 2, 20, cyanGlow,  0xCCFFFFFF);
+
+        // ── 9. Кластер кристаллов снизу (острием вниз) ───────────────────────
+        int botBase = frameB + 6; // верхняя опорная точка нижних кристаллов
+
+        gfx.fill(barCX - 16, botBase - 2, barCX + 16, botBase + 18,
+                  argb((int)(0x15 + cg * 0x1C), 0x44, 0xAA, 0xFF));
+
+        drawCrystalDown(gfx, barCX - 11, botBase + 9,  3, 9,  purpleMain, purpleShine);
+        drawCrystalDown(gfx, barCX + 11, botBase + 9,  3, 9,  purpleMain, purpleShine);
+        drawCrystalDown(gfx, barCX - 5,  botBase + 12, 4, 12, purpleMain, purpleShine);
+        drawCrystalDown(gfx, barCX + 5,  botBase + 12, 4, 12, purpleMain, purpleShine);
+        drawCrystalDown(gfx, barCX,      botBase + 16, 5, 16, cyanMain,   cyanShine);
+
+        // ── 10. Внешние мерцающие звёздочки вокруг столпа ────────────────────
+        int[][] starPos = {
+            {barX - 16, barY + 18},  {barX + BAR_W + 14, barY + 32},
+            {barX - 24, barY + 62},  {barX + BAR_W + 21, barY + 78},
+            {barX - 18, barY + 108}, {barX + BAR_W + 16, barY + 120},
+            {barX - 12, barY + 158}, {barX + BAR_W + 10, barY + 168},
+            {barX - 14, barY - 38},  {barX + BAR_W + 12, barY - 22},
+            {barX + BAR_W / 2 - 28, barY - 55}, {barX + BAR_W / 2 + 25, barY + BAR_H + 40},
         };
-        double[] starFreq = {0.9, 1.1, 0.7, 1.3, 0.8, 1.0, 1.4, 0.6};
+        double[] starFreq = {0.9, 1.1, 0.7, 1.3, 0.8, 1.05, 1.4, 0.6, 1.2, 0.85, 1.55, 0.75};
         for (int i = 0; i < starPos.length; i++) {
-            float sp = (float)(Math.sin((now / 700.0 * starFreq[i] + i * 0.85) * Math.PI) * 0.5 + 0.5);
-            if (sp > 0.25f) {
-                int sA = (int)(sp * 210);
+            float sp = (float)(Math.sin((now / 650.0 * starFreq[i] + i * 0.9) * Math.PI) * 0.5 + 0.5);
+            if (sp > 0.20f) {
+                int sA = (int)(sp * 220);
                 int sC = (i % 3 == 2)
-                    ? argb(sA, 0xBB, 0x88, 0xFF)  // фиолетовая
+                    ? argb(sA, 0xCC, 0x88, 0xFF)  // фиолетовая
                     : argb(sA, 0x88, 0xDD, 0xFF);  // голубая
-                drawStarSparkle(gfx, starPos[i][0], starPos[i][1], sp > 0.75f ? 3 : 2, sC);
+                drawStarSparkle(gfx, starPos[i][0], starPos[i][1], sp > 0.70f ? 3 : 2, sC);
             }
         }
     }

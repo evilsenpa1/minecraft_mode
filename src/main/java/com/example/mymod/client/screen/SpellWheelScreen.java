@@ -275,9 +275,12 @@ public class SpellWheelScreen extends Screen {
                 (starAlpha << 24) | (COL_GOLD & 0xFFFFFF));
 
         // Информация об активном или hovered заклинании
+        // Защита: ограничиваем infoSlot допустимым диапазоном
         int infoSlot = (hoveredSlot >= 0) ? hoveredSlot : activeSlot;
+        if (infoSlot < 0 || infoSlot >= IPlayerSkills.SPELL_SLOTS) infoSlot = 0;
         String sid = spellSlots[infoSlot];
-        Spell spell = (sid != null) ? SpellRegistry.get(sid) : null;
+        // Пустая строка тоже считается "нет заклинания" — защита от рассинхрона
+        Spell spell = (sid != null && !sid.isEmpty()) ? SpellRegistry.get(sid) : null;
 
         if (spell != null) {
             // Ниже центрального круга: имя + мана
@@ -441,7 +444,9 @@ public class SpellWheelScreen extends Screen {
             for (int i = 0; i < IPlayerSkills.SPELL_SLOTS; i++) {
                 spellSlots[i] = skills.getSpellInSlot(i);
             }
-            activeSlot = skills.getActiveSlot();
+            // Ограничиваем activeSlot допустимым диапазоном на случай рассинхрона
+            int slot = skills.getActiveSlot();
+            activeSlot = (slot >= 0 && slot < IPlayerSkills.SPELL_SLOTS) ? slot : 0;
         });
     }
 

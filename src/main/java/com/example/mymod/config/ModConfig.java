@@ -28,7 +28,7 @@ public class ModConfig {
                     "  VERTICAL_BAR - вертикальная полоска справа экрана с эффектом переливания",
                     "  ENCHANT_BAR  - горизонтальная полоска справа экрана с магическим переливом без цифр"
                 )
-                .defineEnum("manaHudStyle", ManaHudStyle.BAR);
+                .defineEnum("manaHudStyle", ManaHudStyle.VERTICAL_BAR);
 
         BUILDER.pop();
         SPEC = BUILDER.build();

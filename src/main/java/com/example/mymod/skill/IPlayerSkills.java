@@ -79,6 +79,18 @@ public interface IPlayerSkills {
     void syncFromServer(int skillPoints, Set<String> unlockedNodes,
                         String[] spellSlots, int activeSlot);
 
+    // ─── Отслеживание уровня (для начисления очков за повышение уровня) ───────
+
+    /**
+     * Последний известный уровень опыта игрока.
+     * -1 = ещё не инициализировано (новый игрок или первый тик после установки мода).
+     * Используется чтобы обнаружить повышение уровня и выдать очки навыков.
+     */
+    int getLastKnownLevel();
+
+    /** Обновить сохранённый уровень (после начисления очков или при уменьшении уровня) */
+    void setLastKnownLevel(int level);
+
     // ─── NBT сериализация ─────────────────────────────────────────────────────
 
     CompoundTag serializeNBT();
