@@ -1,0 +1,41 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Gradle wrapper binary (commit only the .properties, not the jar)
+gradle/wrapper/gradle-wrapper.jar
+
+# Forge run directories
+run/
+run-data/
+
+# Generated resources (datagen output)
+src/generated/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code (keep .vscode/ tracked, ignore workspace state)
+.vscode/*.code-workspace
+
+# Claude Code (личная память и настройки — не для репозитория)
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
