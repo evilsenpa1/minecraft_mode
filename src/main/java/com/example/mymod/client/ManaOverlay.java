@@ -3,8 +3,10 @@ package com.example.mymod.client;
 import com.example.mymod.capability.ManaCapability;
 import com.example.mymod.config.ModConfig;
 import com.example.mymod.skill.PlayerSkillsCapability;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 
@@ -35,6 +37,28 @@ public class ManaOverlay {
     private static final int COLOR_TEXT_MAIN     = 0xFFADD8E6;
     // Текст вторичный (проценты)
     private static final int COLOR_TEXT_PERCENT  = 0xFF87CEEB;
+
+    // ─── Текстуры HUD Кристального Столпа ────────────────────────────────────
+
+    // Тёмный фон пустого вертикального бара (20×185)
+    private static final ResourceLocation TEX_MANA_BG    =
+            new ResourceLocation("mymod", "textures/gui/mana_bar_bg.png");
+    // Светящийся портальный слой заливки (20×185)
+    private static final ResourceLocation TEX_MANA_FILL  =
+            new ResourceLocation("mymod", "textures/gui/mana_bar_fill.png");
+    // Золотая рамка + кристальный декор (32×256)
+    private static final ResourceLocation TEX_MANA_FRAME =
+            new ResourceLocation("mymod", "textures/gui/mana_bar_frame.png");
+
+    // Размеры текстур (должны совпадать с gen_textures.py)
+    private static final int TEX_FILL_W  = 20,  TEX_FILL_H  = 185;
+    private static final int TEX_FRAME_W = 32,  TEX_FRAME_H = 256;
+
+    // Смещение внутренней зоны в текстуре рамки:
+    //   x=3..22 — горизонтальная прозрачная зона (золотые inner-бордеры на x=3 и x=22)
+    //   y=48..232 — вертикальная прозрачная зона (185px = BAR_H)
+    private static final int FRAME_INNER_X = 3;
+    private static final int FRAME_INNER_Y = 48;
 
     // ─── Регистрация ─────────────────────────────────────────────────────────
 
@@ -90,70 +114,258 @@ public class ManaOverlay {
     }
 
     // =========================================================================
-    // СТИЛЬ 1: ICON — компактный значок с числами
+    // СТИЛЬ 1: ICON — «Орб Магии» — плашка с шаром маны, искрами и гемом
     // =========================================================================
 
     /**
-     * Рисует синий ромб-значок, правее — числа (текущая/максимум) и проценты.
-     * Позиция: правый нижний угол, над хотбаром.
+     * Рисует горизонтальную магическую плашку:
+     *   — тёмно-синий фон с золотой рамкой и угловыми акцентами
+     *   — анимированный светящийся орб слева (синий/фиолетовый шар с глянцем)
+     *   — мерцающие звёздочки на фоне и вокруг орба
+     *   — текст «75 / 100» и «75%» по центру
+     *   — маленький кристалл-гем справа
      *
-     *   [ ромб ]  75 / 100
-     *              75%
+     * Позиция: правый нижний угол, над хотбаром.
      */
     private static void renderIconStyle(GuiGraphics gfx, Minecraft mc,
                                          int current, int max,
                                          int screenW, int screenH) {
-        // Отступ от правого и нижнего краёв (немного выше, чтобы не перекрывать хотбар)
-        int originX = screenW - 95;
-        int originY = screenH - 68;
+        // ── Геометрия ────────────────────────────────────────────────────────
+        final int PANEL_W    = 185; // ширина плашки
+        final int PANEL_H    = 32;  // высота плашки
+        final int FRAME_T    = 2;   // толщина золотой рамки
+        final int MARGIN_R   = 14;  // отступ от правого края экрана
+        final int MARGIN_BOT = 68;  // отступ от нижнего края (выше хотбара)
+        final int ORB_R      = 12;  // радиус орба маны
 
-        int iconSize = 10; // полуразмер ромба (итого 20×20 пикселей)
-        int iconCX   = originX + iconSize;   // центр ромба по X
-        int iconCY   = originY + iconSize;   // центр ромба по Y
+        // Левый верхний угол плашки
+        int px  = screenW - PANEL_W - MARGIN_R;
+        int py  = screenH - PANEL_H - MARGIN_BOT;
+        int px2 = px + PANEL_W;
+        int py2 = py + PANEL_H;
 
-        // Тёмный фон-плашка под весь элемент
-        gfx.fill(originX - 3, originY - 3, originX + 85, originY + 24, COLOR_BG);
+        // Центр орба — у левого края внутри рамки
+        int orbCX = px + FRAME_T + 4 + ORB_R;
+        int orbCY = py + PANEL_H / 2;
 
-        // Ромб (заполнен двумя слоями: основной цвет + блик сверху)
-        drawDiamond(gfx, iconCX, iconCY, iconSize, COLOR_MANA_BASE);
-        // Блик — верхняя половина ромба, чуть светлее
-        drawDiamondHalf(gfx, iconCX, iconCY, iconSize, COLOR_MANA_SHINE);
+        long   now = System.currentTimeMillis();
+        double PI2 = Math.PI * 2;
 
-        // Текст с числами: "75 / 100"
-        int textX = originX + iconSize * 2 + 5;
-        String numbers = current + " / " + max;
-        gfx.drawString(mc.font, numbers, textX, originY + 2, COLOR_TEXT_MAIN, true);
+        // ── 1. Внешнее пульсирующее свечение орба (рисуем ДО рамки) ─────────
+        float glowPulse = (float)(Math.sin((now % 1800) / 1800.0 * PI2) * 0.5 + 0.5);
+        drawCircleFilled(gfx, orbCX, orbCY, ORB_R + 11, argb((int)(0x22 + glowPulse * 0x1A), 0x44, 0xAA, 0xFF));
+        drawCircleFilled(gfx, orbCX, orbCY, ORB_R + 6,  argb((int)(0x18 + glowPulse * 0x14), 0x55, 0xCC, 0xFF));
 
-        // Текст с процентами: "75%"
+        // ── 2. Золотая рамка с тёмным фоном ──────────────────────────────────
+        gfx.fill(px - 1, py - 1, px2 + 1, py2 + 1, 0xFF3A2508); // внешний тёмный обвод
+        gfx.fill(px,     py,     px2,     py2,     0xFFCC9820); // основное золото
+        gfx.fill(px + 1, py + 1, px2 - 1, py2 - 1, 0xFFD4A830); // внутреннее золото (светлее)
+        // Тёмно-синий фон внутри рамки
+        gfx.fill(px + FRAME_T, py + FRAME_T, px2 - FRAME_T, py2 - FRAME_T, 0xFF060A1E);
+        // Бликовые линии рамки
+        gfx.fill(px, py, px2, py + 1, 0xFFFFE060);              // верхний блик
+        gfx.fill(px, py, px + 1, py2, 0xFFFFE060);              // левый блик
+        gfx.fill(px, py2 - 1, px2, py2, 0xFF7A5210);            // нижняя тень
+        gfx.fill(px2 - 1, py, px2, py2, 0xFF7A5210);            // правая тень
+        // Угловые золотые акценты (3×3)
+        gfx.fill(px - 1, py - 1, px + 3,  py + 3,  0xFFFFD700);
+        gfx.fill(px2 - 3, py - 1, px2 + 1, py + 3,  0xFFFFD700);
+        gfx.fill(px - 1, py2 - 3, px + 3,  py2 + 1, 0xFFFFD700);
+        gfx.fill(px2 - 3, py2 - 3, px2 + 1, py2 + 1, 0xFFFFD700);
+
+        // ── 3. Фоновые звёздочки-искры внутри плашки ─────────────────────────
+        int innerX1 = px + FRAME_T + 1;
+        int innerX2 = px2 - FRAME_T - 1;
+        int innerY1 = py + FRAME_T + 1;
+        int innerY2 = py2 - FRAME_T - 1;
+        Random starRng = new Random((now / 700) * 6133L);
+        for (int i = 0; i < 14; i++) {
+            int sx = innerX1 + starRng.nextInt(innerX2 - innerX1);
+            int sy = innerY1 + starRng.nextInt(innerY2 - innerY1);
+            if (starRng.nextFloat() < 0.45f) {
+                boolean bright   = starRng.nextFloat() < 0.30f;
+                boolean isPurple = starRng.nextBoolean();
+                int starA = bright ? 0xEE : 0x77;
+                int starColor = isPurple
+                    ? argb(starA, 0xBB, 0x66, 0xFF)
+                    : argb(starA, 0x66, 0xCC, 0xFF);
+                gfx.fill(sx, sy, sx + 1, sy + 1, starColor);
+                if (bright) {
+                    // 4-конечная звёздочка
+                    gfx.fill(sx - 1, sy, sx + 2, sy + 1, argb(0x44, 0xFF, 0xFF, 0xFF));
+                    gfx.fill(sx, sy - 1, sx + 1, sy + 2, argb(0x44, 0xFF, 0xFF, 0xFF));
+                }
+            }
+        }
+
+        // ── 4. Тело орба (попиксельный рендер по дистанции от центра) ────────
+        float colorShift  = (float)(Math.sin((now % 3200) / 3200.0 * PI2) * 0.5 + 0.5);
+        float pulseBright = (float)(Math.sin((now % 1400) / 1400.0 * PI2) * 0.12 + 0.88);
+
+        for (int dy = -ORB_R; dy <= ORB_R; dy++) {
+            for (int dx = -ORB_R; dx <= ORB_R; dx++) {
+                double dist = Math.sqrt((double)dx * dx + (double)dy * dy);
+                if (dist > ORB_R) continue;
+                float t = (float)(dist / ORB_R);           // 0=центр, 1=край
+                float brightness = (1.0f - t * t) * pulseBright;
+                // Верхняя полусфера получает лёгкое осветление — эффект объёма
+                float topBoost = Math.max(0, (float)(-dy) / ORB_R) * 0.15f;
+
+                int r = Math.min(255, (int)(lerpInt(lerpInt(0x0C, 0x55, colorShift), 0xFF, brightness * 0.75f + topBoost)));
+                int g = Math.min(255, (int)(lerpInt(lerpInt(0x0E, 0x1A, colorShift), 0xCC, brightness * 0.60f + topBoost)));
+                int b = Math.min(255, (int)(lerpInt(0x88, 0xFF, brightness * 0.92f + topBoost * 0.5f)));
+
+                gfx.fill(orbCX + dx, orbCY + dy, orbCX + dx + 1, orbCY + dy + 1, argb(0xFF, r, g, b));
+            }
+        }
+
+        // ── 5. Глянцевый белый блик (верхний левый) ──────────────────────────
+        float blinkPhase = (float)(Math.sin((now % 2200) / 2200.0 * PI2) * 0.25 + 0.75);
+        float glintR = ORB_R * 0.52f;
+        for (int dy = -ORB_R + 2; dy < 0; dy++) {
+            for (int dx = -ORB_R + 2; dx < 0; dx++) {
+                double dist = Math.sqrt((double)dx * dx + (double)dy * dy);
+                if (dist > glintR) continue;
+                float t = (float)(dist / glintR);
+                int a = (int)((1.0f - t) * 155 * blinkPhase);
+                if (a < 5) continue;
+                gfx.fill(orbCX + dx, orbCY + dy, orbCX + dx + 1, orbCY + dy + 1, argb(a, 0xFF, 0xFF, 0xFF));
+            }
+        }
+
+        // ── 6. Розово-маджентовый блик (нижний правый — как на скриншоте) ────
+        float pinkR = ORB_R * 0.42f;
+        for (int dy = 1; dy <= ORB_R - 2; dy++) {
+            for (int dx = 1; dx <= ORB_R - 2; dx++) {
+                double dist = Math.sqrt((double)dx * dx + (double)dy * dy);
+                if (dist > pinkR) continue;
+                float t = (float)(dist / pinkR);
+                int a = (int)((1.0f - t) * 80);
+                if (a < 5) continue;
+                gfx.fill(orbCX + dx, orbCY + dy, orbCX + dx + 1, orbCY + dy + 1, argb(a, 0xFF, 0x44, 0xBB));
+            }
+        }
+
+        // ── 7. Мерцающие искры вокруг орба ───────────────────────────────────
+        int[][] sparkOffsets = {
+            {-ORB_R - 5, -2}, {ORB_R + 6, -ORB_R - 3},
+            {-ORB_R - 7, ORB_R - 1}, {4, -ORB_R - 5},
+            {-3, ORB_R + 5},  {ORB_R + 4, 3}
+        };
+        double[] sparkFreq = {1.1, 0.75, 1.35, 0.9, 1.55, 0.8};
+        for (int i = 0; i < sparkOffsets.length; i++) {
+            float sp = (float)(Math.sin((now / 480.0 * sparkFreq[i] + i * 1.15) * Math.PI) * 0.5 + 0.5);
+            if (sp > 0.22f) {
+                int sA = (int)(sp * 210);
+                int sC = (i % 2 == 0)
+                    ? argb(sA, 0xCC, 0x77, 0xFF) // фиолетовая
+                    : argb(sA, 0x55, 0xCC, 0xFF); // голубая
+                drawStarSparkle(gfx, orbCX + sparkOffsets[i][0], orbCY + sparkOffsets[i][1],
+                    sp > 0.65f ? 2 : 1, sC);
+            }
+        }
+
+        // ── 8. Текст маны ─────────────────────────────────────────────────────
+        // Левая граница текстовой зоны — сразу после орба
+        int textX  = orbCX + ORB_R + 8;
+        int textY1 = py + PANEL_H / 2 - mc.font.lineHeight - 1; // строка 1 («XX / MAX»)
+        int textY2 = py + PANEL_H / 2 + 1;                       // строка 2 («XX%»)
+
         int percent = (max > 0) ? (current * 100 / max) : 0;
-        gfx.drawString(mc.font, percent + "%", textX, originY + 13, COLOR_TEXT_PERCENT, true);
+
+        // Строка 1: «текущая / максимум»
+        String numbers = current + " / " + max;
+        gfx.drawString(mc.font, numbers, textX + 1, textY1 + 1, 0x33000000, false); // тень
+        gfx.drawString(mc.font, numbers, textX,     textY1,     COLOR_TEXT_MAIN, false);
+
+        // Строка 2: проценты
+        String pctText = percent + "%";
+        gfx.drawString(mc.font, pctText, textX + 1, textY2 + 1, 0x33000000, false); // тень
+        gfx.drawString(mc.font, pctText, textX,     textY2,     COLOR_TEXT_PERCENT, false);
+
+        // ── 9. Кристалл-гем справа ────────────────────────────────────────────
+        int gemCX = px2 - FRAME_T - 9;
+        int gemCY = py + PANEL_H / 2;
+        drawGem(gfx, gemCX, gemCY, now);
     }
 
     /**
-     * Рисует ромб горизонтальными полосками.
+     * Заливает круг (окружность) пикселями по дистанции от центра.
+     * Используется для многослойного свечения орба.
      *
-     * @param cx    центр по X
-     * @param cy    центр по Y
-     * @param size  полуразмер (итоговый размер = size*2 × size*2)
-     * @param color ARGB цвет
+     * @param cx     центр по X
+     * @param cy     центр по Y
+     * @param radius радиус круга
+     * @param color  ARGB-цвет
      */
-    private static void drawDiamond(GuiGraphics gfx, int cx, int cy, int size, int color) {
-        for (int row = 0; row < size * 2; row++) {
-            int y    = cy - size + row;
-            // ширина строки нарастает до середины, потом убывает
-            int half = (row < size) ? row : (size * 2 - 1 - row);
-            gfx.fill(cx - half, y, cx + half + 1, y + 1, color);
+    private static void drawCircleFilled(GuiGraphics gfx, int cx, int cy, int radius, int color) {
+        for (int dy = -radius; dy <= radius; dy++) {
+            // Быстрое исключение строк вне круга без sqrt
+            int maxDx = (int)Math.sqrt(Math.max(0, (double)radius * radius - (double)dy * dy));
+            if (maxDx == 0) continue;
+            gfx.fill(cx - maxDx, cy + dy, cx + maxDx + 1, cy + dy + 1, color);
         }
     }
 
     /**
-     * Рисует только верхнюю половину ромба — используется для блика.
+     * Рисует маленький пиксельный кристалл-гем в виде восьмиугольника
+     * с анимированным синим/фиолетовым цветом и боковым бликом.
+     *
+     * @param cx  центр по X
+     * @param cy  центр по Y
+     * @param now время в мс (для анимации)
      */
-    private static void drawDiamondHalf(GuiGraphics gfx, int cx, int cy, int size, int color) {
-        for (int row = 0; row < size; row++) {
-            int y    = cy - size + row;
-            int half = row;
-            gfx.fill(cx - half, y, cx + half + 1, y + 1, color);
+    private static void drawGem(GuiGraphics gfx, int cx, int cy, long now) {
+        float gemPulse = (float)(Math.sin((now % 2100) / 2100.0 * Math.PI * 2) * 0.5 + 0.5);
+        int r = lerpInt(0x44, 0x88, gemPulse);
+        int g = lerpInt(0x22, 0x55, gemPulse);
+        int b = 0xFF;
+
+        int gemMain  = argb(0xFF, r, g, b);
+        int gemShine = argb(0xFF, Math.min(255, r + 80), Math.min(255, g + 50), 0xFF);
+        int gemDark  = argb(0xFF, Math.max(0, r - 30), Math.max(0, g - 15), 0xBB);
+
+        // Свечение вокруг гема
+        gfx.fill(cx - 7, cy - 7, cx + 8, cy + 8,
+            argb((int)(0x18 + gemPulse * 0x22), r, g, b));
+
+        // Форма гема (пиксельный восьмиугольник, высота 10, ширина 8):
+        //   строки:  ширина
+        //    -4:      2   (верхнее острие)
+        //    -3:      4
+        //    -2..+2:  8   (широкая часть)
+        //    +3:      6
+        //    +4:      4   (нижнее сужение)
+        int[][] rows = {
+            // {dy, x0_offset, width}  — x0 = cx - x0_offset
+            {-4, 1, 2}, {-3, 2, 4}, {-2, 4, 8}, {-1, 4, 8},
+            { 0, 4, 8}, { 1, 4, 8}, { 2, 4, 8},
+            { 3, 3, 6}, { 4, 2, 4},
+        };
+        for (int[] row : rows) {
+            int dy = row[0];
+            int x0 = cx - row[1];
+            int w  = row[2];
+            gfx.fill(x0, cy + dy, x0 + w, cy + dy + 1, gemMain);
+        }
+
+        // Левый блик (вертикальная светлая полоска)
+        for (int[] row : rows) {
+            int dy = row[0];
+            int x0 = cx - row[1];
+            if (row[2] >= 3) {
+                gfx.fill(x0, cy + dy, x0 + 2, cy + dy + 1, gemShine);
+            }
+        }
+
+        // Нижняя тень (правый угол)
+        for (int[] row : rows) {
+            if (row[0] > 1) {
+                int dy = row[0];
+                int x0 = cx - row[1];
+                int w  = row[2];
+                gfx.fill(x0 + w - 2, cy + dy, x0 + w, cy + dy + 1, gemDark);
+            }
         }
     }
 
@@ -209,319 +421,113 @@ public class ManaOverlay {
 
     /**
      * Рисует вертикальный магический столп — «Кристальный Портал».
-     * Стилистика: высокая золотая рама с синим свечением внутри (как портал/туманность),
-     * кристаллы сверху и снизу, рассеянные звёздочки вокруг. Без цифр и процентов.
      *
-     * Позиция: правая сторона экрана, вертикальный центр.
+     * Слои рендера (снизу вверх):
+     *   1. Пульсирующее внешнее свечение (программные полупрозрачные прямоугольники)
+     *   2. Тёмный фон пустого бара (mana_bar_bg.png)
+     *   3. Портальная заливка маны (mana_bar_fill.png), обрезается по уровню снизу вверх
+     *   4. Золотая рамка + кристаллы (mana_bar_frame.png)
+     *   5. Анимированные внешние звёздочки-искры
      *
-     * Анимированные элементы:
-     *   — Трёхслойное пульсирующее синее/фиолетовое свечение вокруг рамки
-     *   — Массивная золотая рамка с угловыми акцентами и 3D-бликами
-     *   — Ступенчатые золотые постаменты сверху и снизу с боковыми «колоннами»
-     *   — Заполнение: тёмно-синий край → ярко-белый/голубой центр (портальный градиент)
-     *   — Мерцающие внутренние звёзды (статичные + крупные крестообразные)
-     *   — Три движущихся горизонтальных блика с разной скоростью
-     *   — Молниеподобные энергетические трещины
-     *   — Пульсирующая верхняя кромка заполнения (белая линия)
-     *   — Кластер кристаллов сверху (2 внешних + 2 средних фиолетовых + 1 центральный голубой)
-     *   — Кластер кристаллов снизу (4 фиолетовых + 1 центральный голубой)
-     *   — Пульсирующее свечение вокруг кристаллов
-     *   — 12 внешних мерцающих звёздочек разного цвета
+     * Позиция: правый край экрана, вертикально по центру. Без цифр и процентов.
      */
     private static void renderVerticalBarStyle(GuiGraphics gfx,
                                                 int current, int max,
                                                 int screenW, int screenH) {
         // ── Геометрия ────────────────────────────────────────────────────────
-        final int BAR_W        = 20;  // ширина внутреннего бара
-        final int BAR_H        = 185; // высота внутреннего бара
-        final int FRAME_T      = 3;   // толщина золотой рамки
-        final int MARGIN_RIGHT = 22;  // отступ от правого края экрана
-        final int PLT_EXTRA    = 7;   // выступ постамента за рамку с каждой стороны
+        // BAR_W и BAR_H должны совпадать с TEX_FILL_W / TEX_FILL_H и gen_textures.py
+        final int BAR_W        = TEX_FILL_W;   // 20px
+        final int BAR_H        = TEX_FILL_H;   // 185px
+        final int MARGIN_RIGHT = 22;            // отступ от правого края экрана
 
+        // Позиция внутреннего бара на экране
         int barX   = screenW - MARGIN_RIGHT - BAR_W;
         int barY   = screenH / 2 - BAR_H / 2;
         int barBot = barY + BAR_H;
 
-        // Внешние границы золотой рамки
-        int frameL = barX - FRAME_T;
-        int frameR = barX + BAR_W + FRAME_T;
-        int frameT = barY - FRAME_T;
-        int frameB = barBot + FRAME_T;
+        // Позиция текстуры рамки на экране:
+        //   frame x=FRAME_INNER_X выравнивается с barX
+        //   frame y=FRAME_INNER_Y выравнивается с barY
+        int frameX = barX - FRAME_INNER_X;
+        int frameY = barY - FRAME_INNER_Y;
 
-        // Центр бара по X
-        int barCX = barX + BAR_W / 2;
+        // Приближённые границы видимой части рамки (для расчёта свечения).
+        // Золотой бордер рамки — 3px с каждой стороны (совпадает с gen_textures.py).
+        int frameL = barX - 3;
+        int frameR = barX + BAR_W + 3;
 
         // Заполнение (снизу вверх)
         int fillH   = (max > 0) ? (current * BAR_H / max) : 0;
         int fillTop = barBot - fillH;
 
-        // ── Время для анимации ───────────────────────────────────────────────
+        // Время для анимации
         long   now = System.currentTimeMillis();
         double PI2 = Math.PI * 2;
 
-        // ── 1. Трёхслойное пульсирующее внешнее свечение ─────────────────────
+        // ── 1. Пульсирующее внешнее свечение (программные полупрозрачные слои) ─
+        // Учитываем расширение за счёт кристаллов: +FRAME_INNER_Y выше, +~20px ниже
         float glowPulse = (float)(Math.sin((now % 2000) / 2000.0 * PI2) * 0.5 + 0.5);
-        int gA1 = (int)(0x28 + glowPulse * 0x1C);
-        int gA2 = (int)(0x12 + glowPulse * 0x12);
-        int gA3 = (int)(0x07 + glowPulse * 0x09);
-        // Зоны свечения с учётом кристаллов (~36px сверху, ~22px снизу)
-        gfx.fill(frameL - 10, frameT - 36, frameR + 10, frameB + 22, argb(gA1, 0x20, 0x55, 0xFF));
-        gfx.fill(frameL - 22, frameT - 48, frameR + 22, frameB + 34, argb(gA2, 0x15, 0x40, 0xCC));
-        gfx.fill(frameL - 36, frameT - 62, frameR + 36, frameB + 48, argb(gA3, 0x08, 0x25, 0x99));
+        int gA1 = (int)(0x26 + glowPulse * 0x1A);
+        int gA2 = (int)(0x12 + glowPulse * 0x10);
+        int gA3 = (int)(0x07 + glowPulse * 0x08);
+        gfx.fill(frameL - 10, frameY,      frameR + 10, frameY + TEX_FRAME_H, argb(gA1, 0x20, 0x55, 0xFF));
+        gfx.fill(frameL - 22, frameY - 12, frameR + 22, frameY + TEX_FRAME_H + 12, argb(gA2, 0x15, 0x40, 0xCC));
+        gfx.fill(frameL - 36, frameY - 24, frameR + 36, frameY + TEX_FRAME_H + 24, argb(gA3, 0x08, 0x25, 0x99));
 
-        // ── 2. Тёмная подложка под элементом ────────────────────────────────
-        gfx.fill(frameL - 3, frameT - 3, frameR + 3, frameB + 3, 0xCC000011);
+        // ── 2. Тёмный фон пустого бара (mana_bar_bg.png) ─────────────────────
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        gfx.blit(TEX_MANA_BG, barX, barY, 0, 0, BAR_W, BAR_H, TEX_FILL_W, TEX_FILL_H);
 
-        // ── 3. Золотая рамка (многослойная 3D) ───────────────────────────────
-        gfx.fill(frameL - 1, frameT - 1, frameR + 1, frameB + 1, 0xFF5A3D08); // внешний тёмный обвод
-        gfx.fill(frameL,     frameT,     frameR,     frameB,     0xFFCC9820); // основное золото
-        gfx.fill(frameL + 1, frameT + 1, frameR - 1, frameB - 1, 0xFFD4A830); // внутреннее золото
-        gfx.fill(frameL,     frameT,     frameR,     frameT + 1, 0xFFFFE060); // верхний блик
-        gfx.fill(frameL,     frameT,     frameL + 1, frameB,     0xFFFFE060); // левый блик
-        gfx.fill(frameL,     frameB - 1, frameR,     frameB,     0xFF7A5210); // нижняя тень
-        gfx.fill(frameR - 1, frameT,     frameR,     frameB,     0xFF7A5210); // правая тень
-        // Угловые золотые акценты (3×3 пикселя)
-        gfx.fill(frameL - 1, frameT - 1, frameL + 2, frameT + 2, 0xFFFFD700);
-        gfx.fill(frameR - 2, frameT - 1, frameR + 1, frameT + 2, 0xFFFFD700);
-        gfx.fill(frameL - 1, frameB - 2, frameL + 2, frameB + 1, 0xFFFFD700);
-        gfx.fill(frameR - 2, frameB - 2, frameR + 1, frameB + 1, 0xFFFFD700);
-
-        // ── 4. Тёмный фон внутри бара ────────────────────────────────────────
-        gfx.fill(barX, barY, barX + BAR_W, barBot, 0xFF010115);
-
-        // ── 5. Заполнение: портальный градиент (тёмный край → белый центр) ───
+        // ── 3. Заливка маны (mana_bar_fill.png), обрезается снизу вверх ───────
         if (fillH > 0) {
-            // Фаза цвета: синий ↔ слегка фиолетово-синий (период 3 с)
-            float colorPhase = (float)(Math.sin((now % 3000) / 3000.0 * PI2) * 0.5 + 0.5);
-            // Пульс яркости центра (период 1.2 с)
-            float centerPulse = (float)(Math.sin((now % 1200) / 1200.0 * PI2) * 0.15 + 0.85);
+            // Пульс яркости: ±7% (период 1.5 с)
+            float bright = (float)(Math.sin((now % 1500) / 1500.0 * PI2) * 0.07 + 0.93);
+            RenderSystem.setShaderColor(bright, bright, 1f, 1f);
+            // Рисуем только нижнюю fillH часть текстуры (UV offset = TEX_FILL_H - fillH)
+            int uvFillY = TEX_FILL_H - fillH;
+            gfx.blit(TEX_MANA_FILL, barX, fillTop, 0, uvFillY, BAR_W, fillH, TEX_FILL_W, TEX_FILL_H);
+            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
-            // По колонкам: создаём эффект яркого портального окна
-            // distC: 0.0 = центр бара, 1.0 = левый/правый край
-            for (int col = 0; col < BAR_W; col++) {
-                int   x     = barX + col;
-                float distC = Math.abs(col - (BAR_W - 1) * 0.5f) / ((BAR_W - 1) * 0.5f);
-                // Волна со смещением по колонке — имитирует «движение» в портале
-                float wave = (float)(Math.sin(
-                        ((now % 2000) / 2000.0 - col / (double)BAR_W * 0.5) * PI2
-                ) * 0.5 + 0.5);
-
-                // Центр: ярко-белый/голубой; край: тёмно-синий (квадратичное затухание)
-                float bright = (1.0f - distC * distC) * centerPulse;
-                int r = Math.min(255, (int)(
-                        lerpInt(lerpInt(0x05, 0x28, colorPhase), 255, bright) * (0.7f + wave * 0.3f)));
-                int g = Math.min(255, (int)(
-                        lerpInt(lerpInt(0x08, 0x18, colorPhase), 238, bright) * (0.7f + wave * 0.3f)));
-                int b = Math.min(255, (int)(
-                        lerpInt(lerpInt(0x55, 0x80, colorPhase), 255, bright) * (0.8f + wave * 0.2f)));
-
-                gfx.fill(x, fillTop, x + 1, barBot, argb(0xFF, r, g, b));
-            }
-
-            // ── Мерцающие внутренние звёзды (туманность/портал) ──────────────
-            // Seed меняется каждые 500 мс — звёзды плавно обновляются
-            Random starRng = new Random((now / 500) * 3571L);
-            for (int i = 0; i < 20; i++) {
-                int sx = barX + 1 + starRng.nextInt(BAR_W - 2);
-                int sy = fillTop + starRng.nextInt(Math.max(1, fillH));
-                if (starRng.nextFloat() < 0.60f) {
-                    boolean isBright = starRng.nextFloat() < 0.30f;
-                    gfx.fill(sx, sy, sx + 1, sy + 1, isBright ? 0xFFFFFFFF : 0xFFBBEEFF);
-                    if (isBright && starRng.nextFloat() < 0.45f) {
-                        // Крестообразная крупная звёздочка
-                        gfx.fill(sx - 1, sy, sx + 2, sy + 1, 0x77FFFFFF);
-                        gfx.fill(sx, sy - 1, sx + 1, sy + 2, 0x77FFFFFF);
-                    }
-                }
-            }
-
-            // ── Три движущихся горизонтальных блика ───────────────────────────
-            int s1cy = fillTop + (int)((now % 1600) / 1600.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 3, barX + BAR_W - 3, s1cy,
-                    Math.max(3, fillH / 8), fillTop, barBot, 0x4488DDFF);
-
-            int s2cy = fillTop + (int)((now % 2800) / 2800.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 5, barX + BAR_W - 5, s2cy,
-                    Math.max(2, fillH / 14), fillTop, barBot, 0xAAFFFFFF);
-
-            int s3cy = fillTop + (int)((now % 4500) / 4500.0 * fillH);
-            drawHorizontalShimmer(gfx, barX + 1, barX + BAR_W - 1, s3cy,
-                    Math.max(6, fillH / 5), fillTop, barBot, 0x1A5599FF);
-
-            // ── Энергетические трещины (молниеподобные) ───────────────────────
-            Random lRng = new Random((now / 400) * 7919L);
-            if (fillH > 25 && lRng.nextFloat() < 0.40f) {
-                int lx  = barX + 3 + lRng.nextInt(BAR_W - 6);
-                int len = Math.min(fillH / 2, 28 + lRng.nextInt(20));
-                int ly0 = fillTop + lRng.nextInt(Math.max(1, fillH - len));
-                int ltA = (int)((Math.sin((now % 250) / 250.0 * PI2) * 0.3 + 0.7) * 0xDD);
-                for (int ly = ly0; ly < ly0 + len; ly += 2) {
-                    int off = (lRng.nextBoolean() ? 1 : -1) * (1 + lRng.nextInt(2));
-                    lx = Math.max(barX + 1, Math.min(barX + BAR_W - 2, lx + off));
-                    gfx.fill(lx, ly, lx + 1, ly + 2, argb(ltA, 0xDD, 0xF0, 0xFF));
-                }
-            }
-
-            // ── Пульсирующая верхняя кромка заполнения (белая) ───────────────
-            float ep = (float)(Math.sin((now % 500) / 500.0 * PI2) * 0.5 + 0.5);
+            // Пульсирующая верхняя кромка заполнения (белая линия поверх текстуры)
+            float ep = (float)(Math.sin((now % 700) / 700.0 * PI2) * 0.5 + 0.5);
             gfx.fill(barX,     fillTop,     barX + BAR_W,     fillTop + 1,
-                    argb((int)(0xAA + ep * 0x55), 0xFF, 0xFF, 0xFF));
+                    argb((int)(0x88 + ep * 0x77), 0xFF, 0xFF, 0xFF));
             gfx.fill(barX + 2, fillTop + 1, barX + BAR_W - 2, fillTop + 2,
-                    argb((int)(ep * 0xBB), 0xCC, 0xEE, 0xFF));
+                    argb((int)(ep * 0xAA), 0xCC, 0xEE, 0xFF));
         }
 
-        // ── 6. Ступенчатые постаменты сверху и снизу ─────────────────────────
-        int pW = PLT_EXTRA;
+        // ── 4. Золотая рамка + кристаллы (mana_bar_frame.png) ────────────────
+        // Рамка имеет прозрачность внутри — fill-текстура видна сквозь неё
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        gfx.blit(TEX_MANA_FRAME, frameX, frameY, 0, 0, TEX_FRAME_W, TEX_FRAME_H, TEX_FRAME_W, TEX_FRAME_H);
 
-        // Верхний постамент (две ступени + боковые «колонны»)
-        gfx.fill(frameL - pW,     frameT - 6,  frameR + pW,     frameT,     0xFF7A5210); // тёмное основание
-        gfx.fill(frameL - pW,     frameT - 5,  frameR + pW,     frameT,     0xFFCC9820); // основное золото
-        gfx.fill(frameL - pW,     frameT - 5,  frameR + pW,     frameT - 4, 0xFFFFE060); // блик
-        gfx.fill(frameL - pW + 2, frameT - 3,  frameR + pW - 2, frameT,     0xFFD4A830); // нижняя ступень
-        // Боковые вертикальные акценты («колонны»)
-        gfx.fill(frameL - pW - 2, frameT - 8,  frameL - pW + 2, frameT,     0xFFCC9820);
-        gfx.fill(frameR + pW - 2, frameT - 8,  frameR + pW + 2, frameT,     0xFFCC9820);
-        gfx.fill(frameL - pW - 2, frameT - 8,  frameL - pW + 2, frameT - 7, 0xFFFFE060);
-        gfx.fill(frameR + pW - 2, frameT - 8,  frameR + pW + 2, frameT - 7, 0xFFFFE060);
-
-        // Нижний постамент (аналогичный)
-        gfx.fill(frameL - pW,     frameB,      frameR + pW,     frameB + 6, 0xFF7A5210);
-        gfx.fill(frameL - pW,     frameB,      frameR + pW,     frameB + 5, 0xFFCC9820);
-        gfx.fill(frameL - pW,     frameB + 1,  frameR + pW,     frameB + 2, 0xFFFFE060);
-        gfx.fill(frameL - pW + 2, frameB,      frameR + pW - 2, frameB + 3, 0xFFD4A830);
-        gfx.fill(frameL - pW - 2, frameB,      frameL - pW + 2, frameB + 8, 0xFFCC9820);
-        gfx.fill(frameR + pW - 2, frameB,      frameR + pW + 2, frameB + 8, 0xFFCC9820);
-        gfx.fill(frameL - pW - 2, frameB + 7,  frameL - pW + 2, frameB + 8, 0xFF7A5210);
-        gfx.fill(frameR + pW - 2, frameB + 7,  frameR + pW + 2, frameB + 8, 0xFF7A5210);
-
-        // ── 7. Анимация цвета кристаллов ─────────────────────────────────────
-        float cp1 = (float)(Math.sin((now % 2200) / 2200.0 * PI2) * 0.5 + 0.5); // голубой
-        float cp2 = (float)(Math.sin((now % 3100) / 3100.0 * PI2 + 1.2) * 0.5 + 0.5); // фиолетовый
-
-        int cR1 = lerpInt(0x44, 0xAA, cp1), cG1 = lerpInt(0xBB, 0xFF, cp1);
-        int cyanMain  = argb(0xFF, cR1, cG1, 0xFF);
-        int cyanShine = argb(0xFF, Math.min(255, cR1 + 60), Math.min(255, cG1 + 10), 0xFF);
-        int cyanGlow  = argb(0xBB, Math.min(255, cR1 + 100), Math.min(255, cG1 + 20), 0xFF);
-
-        int pR = lerpInt(0x77, 0xBB, cp2), pG = lerpInt(0x08, 0x30, cp2), pB = lerpInt(0xCC, 0xFF, cp2);
-        int purpleMain  = argb(0xFF, pR, pG, pB);
-        int purpleShine = argb(0xFF, Math.min(255, pR + 50), Math.min(255, pG + 20), 0xFF);
-
-        // ── 8. Кластер кристаллов сверху (острием вверх) ─────────────────────
-        int topBase = frameT - 6; // нижняя опорная точка верхних кристаллов
-
-        float cg = (float)(Math.sin((now % 1800) / 1800.0 * PI2) * 0.5 + 0.5);
-        gfx.fill(barCX - 20, topBase - 28, barCX + 20, topBase + 2,
-                  argb((int)(0x18 + cg * 0x25), 0x44, 0xAA, 0xFF));
-
-        // Внешние маленькие фиолетовые (самые крайние)
-        drawCrystalUp(gfx, barCX - 14, topBase - 8,  3, 8,  purpleMain, purpleShine);
-        drawCrystalUp(gfx, barCX + 14, topBase - 7,  3, 7,  purpleMain, purpleShine);
-        // Средние фиолетовые
-        drawCrystalUp(gfx, barCX - 8,  topBase - 14, 4, 14, purpleMain, purpleShine);
-        drawCrystalUp(gfx, barCX + 8,  topBase - 13, 4, 13, purpleMain, purpleShine);
-        // Центральный голубой (самый высокий, с дополнительным бликом)
-        drawCrystalUp(gfx, barCX,      topBase - 20, 6, 20, cyanMain, cyanShine);
-        drawCrystalUp(gfx, barCX,      topBase - 20, 2, 20, cyanGlow,  0xCCFFFFFF);
-
-        // ── 9. Кластер кристаллов снизу (острием вниз) ───────────────────────
-        int botBase = frameB + 6; // верхняя опорная точка нижних кристаллов
-
-        gfx.fill(barCX - 16, botBase - 2, barCX + 16, botBase + 18,
-                  argb((int)(0x15 + cg * 0x1C), 0x44, 0xAA, 0xFF));
-
-        drawCrystalDown(gfx, barCX - 11, botBase + 9,  3, 9,  purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX + 11, botBase + 9,  3, 9,  purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX - 5,  botBase + 12, 4, 12, purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX + 5,  botBase + 12, 4, 12, purpleMain, purpleShine);
-        drawCrystalDown(gfx, barCX,      botBase + 16, 5, 16, cyanMain,   cyanShine);
-
-        // ── 10. Внешние мерцающие звёздочки вокруг столпа ────────────────────
+        // ── 5. Анимированные внешние звёздочки вокруг столпа ─────────────────
         int[][] starPos = {
             {barX - 16, barY + 18},  {barX + BAR_W + 14, barY + 32},
             {barX - 24, barY + 62},  {barX + BAR_W + 21, barY + 78},
             {barX - 18, barY + 108}, {barX + BAR_W + 16, barY + 120},
             {barX - 12, barY + 158}, {barX + BAR_W + 10, barY + 168},
             {barX - 14, barY - 38},  {barX + BAR_W + 12, barY - 22},
-            {barX + BAR_W / 2 - 28, barY - 55}, {barX + BAR_W / 2 + 25, barY + BAR_H + 40},
+            {barX + BAR_W / 2 - 28, barY - 55}, {barX + BAR_W / 2 + 24, barY + BAR_H + 40},
         };
         double[] starFreq = {0.9, 1.1, 0.7, 1.3, 0.8, 1.05, 1.4, 0.6, 1.2, 0.85, 1.55, 0.75};
         for (int i = 0; i < starPos.length; i++) {
             float sp = (float)(Math.sin((now / 650.0 * starFreq[i] + i * 0.9) * Math.PI) * 0.5 + 0.5);
             if (sp > 0.20f) {
-                int sA = (int)(sp * 220);
+                int sA = (int)(sp * 215);
                 int sC = (i % 3 == 2)
                     ? argb(sA, 0xCC, 0x88, 0xFF)  // фиолетовая
                     : argb(sA, 0x88, 0xDD, 0xFF);  // голубая
                 drawStarSparkle(gfx, starPos[i][0], starPos[i][1], sp > 0.70f ? 3 : 2, sC);
             }
         }
+
+        RenderSystem.disableBlend();
     }
 
     // ── Вспомогательные рисовальщики ─────────────────────────────────────────
-
-    /**
-     * Рисует горизонтальную полосу-блик, ограниченную зоной заполнения.
-     *
-     * @param x0, x1   левая и правая граница
-     * @param centerY  центр полосы по Y
-     * @param halfH    полувысота полосы
-     * @param clipTop  верхний clip (не выходить за fillTop)
-     * @param clipBot  нижний clip (не выходить за barBot)
-     * @param color    ARGB-цвет блика
-     */
-    private static void drawHorizontalShimmer(GuiGraphics gfx, int x0, int x1,
-                                               int centerY, int halfH,
-                                               int clipTop, int clipBot, int color) {
-        int top = Math.max(clipTop, centerY - halfH / 2);
-        int bot = Math.min(clipBot, centerY + halfH / 2);
-        if (top < bot) gfx.fill(x0, top, x1, bot, color);
-    }
-
-    /**
-     * Рисует пиксельный кристалл острием вверх.
-     * Форма: острие (верхние ~40% — сужающийся треугольник) + прямоугольное тело.
-     *
-     * @param cx    центр по X
-     * @param tipY  Y кончика острия (самая верхняя точка)
-     * @param maxW  ширина основания
-     * @param h     полная высота кристалла
-     */
-    private static void drawCrystalUp(GuiGraphics gfx, int cx, int tipY,
-                                       int maxW, int h, int colorMain, int colorShine) {
-        int taperH = Math.max(1, h * 2 / 5); // острие = верхние ~40%
-        for (int row = 0; row < h; row++) {
-            int y = tipY + row;
-            int w = (row < taperH)
-                ? Math.max(1, (row + 1) * maxW / taperH) // сужается к верху
-                : maxW;                                    // прямоугольное тело
-            int x0 = cx - w / 2;
-            gfx.fill(x0, y, x0 + w, y + 1, colorMain);
-            if (w > 1) gfx.fill(x0, y, x0 + 1, y + 1, colorShine); // левый блик
-        }
-    }
-
-    /**
-     * Рисует пиксельный кристалл острием вниз.
-     *
-     * @param cx    центр по X
-     * @param tipY  Y кончика острия (самая нижняя точка)
-     * @param maxW  ширина основания (верхний край)
-     * @param h     полная высота кристалла
-     */
-    private static void drawCrystalDown(GuiGraphics gfx, int cx, int tipY,
-                                         int maxW, int h, int colorMain, int colorShine) {
-        int taperH = Math.max(1, h * 2 / 5); // острие = нижние ~40%
-        for (int row = 0; row < h; row++) {
-            int y = tipY - h + row;
-            int w = (row >= h - taperH)
-                ? Math.max(1, (h - row) * maxW / taperH) // сужается к низу
-                : maxW;
-            int x0 = cx - w / 2;
-            gfx.fill(x0, y, x0 + w, y + 1, colorMain);
-            if (w > 1) gfx.fill(x0, y, x0 + 1, y + 1, colorShine);
-        }
-    }
 
     /**
      * Рисует 4-конечную звёздочку (крест из двух линий + белый центральный пиксель).

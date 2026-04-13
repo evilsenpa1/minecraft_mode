@@ -15,30 +15,43 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Снаряд заклинания «Искра» — пылающий огненный шар Багрового пути.
  *
- * Летит по прямой без гравитации на расстояние до {@link #MAX_RANGE} блоков.
- * При ударе о блок или сущность — взрыв огня, поджигает до 6 ближайших позиций.
+ * Летит по баллистической дуге (с гравитацией) на расстояние до {@link #MAX_RANGE} блоков.
+ * При ударе о блок или сущность — взрыв огня; поджигает 6 блоков в паттерне 2 ряда по 3.
  * Сущности-цели получают урон от огня и загораются.
  *
- * Визуально: хвост из пламени и лавовых брызг при полёте;
- * огненная вспышка + дым при попадании.
+ * Визуально: хвост из пламени при полёте; огненная вспышка + дым при попадании.
+ * Рендер: {@link com.example.mymod.client.render.SparkProjectileRenderer}.
  */
 public class SparkProjectile extends ThrowableItemProjectile {
 
-    /** Максимальная дальность полёта (в блоках). */
-    public static final double MAX_RANGE = 8.0;
+    /** Максимальная дальность полёта (в блоках, 3D-расстояние от точки спавна). */
+    public static final double MAX_RANGE = 11.0;
 
-    /** Количество блоков, которые поджигаются при попадании. */
-    private static final int FIRE_SPREAD_COUNT = 6;
+    /** Гравитация снаряда — создаёт дугу полёта. Стандарт у снежка — 0.03f. */
+    private static final float GRAVITY = 0.04f;
 
     /** Урон от прямого попадания по сущности. */
     private static final float ENTITY_DAMAGE = 3.0f;
 
     /** Длительность горения сущности (секунды). */
     private static final int ENTITY_FIRE_SECONDS = 5;
+
+    /**
+     * Паттерн поджига: 2 ряда по 3 блока (6 позиций).
+     * Координаты относительно точки попадания: {dx, dy, dz}.
+     * Первый ряд — по бокам от центра, второй — на шаг дальше.
+     */
+    private static final int[][] FIRE_PATTERN = {
+        // Ряд 1 — три блока в одну сторону (X)
+        {-1, 0, 0}, {0, 0, 0}, {1, 0, 0},
+        // Ряд 2 — три блока ещё дальше (Z)
+        {-1, 0, 1}, {0, 0, 1}, {1, 0, 1}
+    };
 
     // Позиция спавна для контроля пройденного расстояния
     private double originX, originY, originZ;
@@ -56,16 +69,22 @@ public class SparkProjectile extends ThrowableItemProjectile {
 
     // ─── Внешний вид ─────────────────────────────────────────────────────────
 
-    /** Снаряд выглядит как огненный шар (fire charge). */
+    /**
+     * Базовый предмет для рендера через ThrownItemRenderer (запасной вариант).
+     * Основной рендер — {@link com.example.mymod.client.render.SparkProjectileRenderer}.
+     */
     @Override
     protected Item getDefaultItem() {
         return Items.FIRE_CHARGE;
     }
 
-    /** Летит без гравитации — магический снаряд идёт строго по прямой. */
+    /**
+     * Гравитация создаёт красивую дугу полёта.
+     * Игрок должен целиться чуть выше цели — как при броске мяча.
+     */
     @Override
     protected float getGravity() {
-        return 0.0f;
+        return GRAVITY;
     }
 
     // ─── Тик ─────────────────────────────────────────────────────────────────
@@ -80,20 +99,21 @@ public class SparkProjectile extends ThrowableItemProjectile {
             originRecorded = true;
         }
 
-        super.tick(); // Обработка движения и коллизий (вызывает onHitBlock/onHitEntity)
+        super.tick(); // Движение + коллизии (вызывает onHitBlock/onHitEntity)
 
         if (!isAlive()) return; // Снаряд уже попал — не спавним хвост
 
         // Огненный хвост при полёте (сервер рассылает пакеты всем клиентам)
+        // Количество партиклов сокращено на 30% от оригинала
         if (!level().isClientSide() && level() instanceof ServerLevel serverLevel) {
-            // Основное пламя
+            // Основное пламя: было 4 → стало 3
             serverLevel.sendParticles(ParticleTypes.FLAME,
-                    getX(), getY(), getZ(), 4, 0.1, 0.1, 0.1, 0.04);
-            // Маленькие огоньки для плотности
+                    getX(), getY(), getZ(), 3, 0.1, 0.1, 0.1, 0.04);
+            // Маленькие огоньки: было 3 → стало 2
             serverLevel.sendParticles(ParticleTypes.SMALL_FLAME,
-                    getX(), getY(), getZ(), 3, 0.06, 0.06, 0.06, 0.02);
-            // Редкие лавовые брызги — эффект раскалённого ядра
-            if (random.nextFloat() < 0.5f) {
+                    getX(), getY(), getZ(), 2, 0.06, 0.06, 0.06, 0.02);
+            // Лавовые брызги: шанс снижен с 50% до 35%
+            if (random.nextFloat() < 0.35f) {
                 serverLevel.sendParticles(ParticleTypes.LAVA,
                         getX(), getY(), getZ(), 1, 0.0, 0.0, 0.0, 0.0);
             }
@@ -103,10 +123,10 @@ public class SparkProjectile extends ThrowableItemProjectile {
         if (!level().isClientSide() && originRecorded) {
             double distSq = distanceToSqr(originX, originY, originZ);
             if (distSq >= MAX_RANGE * MAX_RANGE) {
-                // Небольшой эффект угасания
+                // Небольшой эффект угасания при исчезновении
                 if (level() instanceof ServerLevel serverLevel) {
                     serverLevel.sendParticles(ParticleTypes.SMOKE,
-                            getX(), getY(), getZ(), 6, 0.15, 0.15, 0.15, 0.04);
+                            getX(), getY(), getZ(), 4, 0.15, 0.15, 0.15, 0.04);
                 }
                 discard();
             }
@@ -121,7 +141,7 @@ public class SparkProjectile extends ThrowableItemProjectile {
         super.onHitBlock(result);
         if (!level().isClientSide()) {
             playImpactEffects(result.getBlockPos());
-            spreadFire(result.getBlockPos());
+            spreadFirePattern(result.getBlockPos());
             discard();
         }
     }
@@ -143,7 +163,7 @@ public class SparkProjectile extends ThrowableItemProjectile {
 
             // Огонь вокруг места попадания
             playImpactEffects(entity.blockPosition());
-            spreadFire(entity.blockPosition());
+            spreadFirePattern(entity.blockPosition());
             discard();
         }
     }
@@ -151,26 +171,42 @@ public class SparkProjectile extends ThrowableItemProjectile {
     // ─── Внутренняя логика ────────────────────────────────────────────────────
 
     /**
-     * Поджигает до {@link #FIRE_SPREAD_COUNT} блоков вокруг центра взрыва.
-     * Ищет свободные позиции где может разместиться огонь.
+     * Поджигает блоки по паттерну 2 ряда × 3 блока (итого до 6 позиций).
      *
-     * @param center точка попадания снаряда
+     * Паттерн ориентируется по горизонтальному направлению полёта снаряда:
+     * «ширина» (3 блока) перпендикулярна траектории, «глубина» (2 блока) — вперёд.
+     * Это убирает артефакт всегда-осевой ориентации — огонь всегда «за» снарядом.
+     *
+     * Для каждой позиции ищет свободное место по Y (уровень ±0..+2 от центра).
+     *
+     * @param center блок, в который попал снаряд
      */
-    private void spreadFire(BlockPos center) {
-        int placed = 0;
+    private void spreadFirePattern(BlockPos center) {
+        // Берём текущий вектор скорости — он указывает направление полёта в момент удара
+        Vec3 vel = getDeltaMovement();
 
-        // Перебираем позиции в области 5×3×5 вокруг центра
-        outer:
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    if (placed >= FIRE_SPREAD_COUNT) break outer;
+        // Горизонтальный угол (yaw) по осям X и Z: atan2(x, z) даёт угол от +Z по часовой
+        double yawRad = Math.atan2(vel.x, vel.z);
+        double cos = Math.cos(yawRad);
+        double sin = Math.sin(yawRad);
 
-                    BlockPos firePos = center.offset(dx, dy, dz);
-                    if (BaseFireBlock.canBePlacedAt(level(), firePos, Direction.UP)) {
-                        level().setBlockAndUpdate(firePos, BaseFireBlock.getState(level(), firePos));
-                        placed++;
-                    }
+        for (int[] offset : FIRE_PATTERN) {
+            // offset[0] = «ширина» (перпендикуляр к направлению)
+            // offset[2] = «глубина» (вдоль направления полёта)
+            int dx = offset[0];
+            int dy = offset[1];
+            int dz = offset[2];
+
+            // Поворачиваем смещение вокруг вертикальной оси Y на угол yaw
+            int rotDx = (int) Math.round(dx * cos - dz * sin);
+            int rotDz = (int) Math.round(dx * sin + dz * cos);
+
+            // Пробуем три уровня по Y — подстраиваемся под рельеф местности
+            for (int yTry = 0; yTry <= 2; yTry++) {
+                BlockPos firePos = center.offset(rotDx, dy + yTry, rotDz);
+                if (BaseFireBlock.canBePlacedAt(level(), firePos, Direction.UP)) {
+                    level().setBlockAndUpdate(firePos, BaseFireBlock.getState(level(), firePos));
+                    break; // Нашли — переходим к следующей точке паттерна
                 }
             }
         }
@@ -178,6 +214,7 @@ public class SparkProjectile extends ThrowableItemProjectile {
 
     /**
      * Воспроизводит визуальные и звуковые эффекты взрыва в точке попадания.
+     * Количество партиклов сокращено на 30% от оригинала.
      *
      * @param center блок, в который попал снаряд
      */
@@ -188,17 +225,18 @@ public class SparkProjectile extends ThrowableItemProjectile {
         double cy = center.getY() + 0.5;
         double cz = center.getZ() + 0.5;
 
-        // Взрывной выброс лавы и пламени
+        // Взрывной выброс лавы: было 20 → стало 14
         serverLevel.sendParticles(ParticleTypes.LAVA,
-                cx, cy, cz, 20, 0.5, 0.3, 0.5, 0.2);
+                cx, cy, cz, 14, 0.5, 0.3, 0.5, 0.2);
+        // Вспышка пламени: было 35 → стало 25
         serverLevel.sendParticles(ParticleTypes.FLAME,
-                cx, cy, cz, 35, 0.6, 0.4, 0.6, 0.14);
-        // Чёрный дым шлейфом вверх
+                cx, cy, cz, 25, 0.6, 0.4, 0.6, 0.14);
+        // Чёрный дым шлейфом вверх: было 12 → стало 8
         serverLevel.sendParticles(ParticleTypes.LARGE_SMOKE,
-                cx, cy + 0.5, cz, 12, 0.4, 0.3, 0.4, 0.06);
-        // Летящие огоньки
+                cx, cy + 0.5, cz, 8, 0.4, 0.3, 0.4, 0.06);
+        // Летящие огоньки: было 15 → стало 10
         serverLevel.sendParticles(ParticleTypes.SMALL_FLAME,
-                cx, cy, cz, 15, 0.4, 0.4, 0.4, 0.08);
+                cx, cy, cz, 10, 0.4, 0.4, 0.4, 0.08);
 
         // Звук удара огненного шара
         level().playSound(null, center,

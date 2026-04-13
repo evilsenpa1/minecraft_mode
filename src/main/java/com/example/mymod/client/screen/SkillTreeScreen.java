@@ -24,9 +24,6 @@ import java.util.Set;
 /**
  * Экран дерева прокачки — аналог Path of Exile passive skill tree.
  *
- * Занимает почти весь экран. Левая часть — дерево нод с анимацией.
- * Правая часть (INFO_PANEL_WIDTH) — панель информации о выбранной ноде.
- *
  * Управление:
  *   ПКМ + drag — перемещение камеры
  *   Колесо мыши — зум
@@ -38,25 +35,25 @@ public class SkillTreeScreen extends Screen {
 
     // ─── Константы UI ─────────────────────────────────────────────────────────
 
-    private static final int INFO_PANEL_WIDTH = 175;
+    private static final int INFO_PANEL_WIDTH = 180;
     private static final int MARGIN           = 6;
 
-    // Радиусы нод в пикселях (в мировом пространстве дерева)
-    private static final int R_CENTRAL = 22;
-    private static final int R_GATEWAY = 14;
-    private static final int R_PASSIVE =  8;
-    private static final int R_SPELL   = 14;
+    // Радиусы нод (мировые единицы)
+    private static final int R_CENTRAL = 24;
+    private static final int R_GATEWAY = 16;
+    private static final int R_PASSIVE =  9;
+    private static final int R_SPELL   = 16;
 
-    // ─── Цвета ───────────────────────────────────────────────────────────────
+    // ─── Цветовая палитра ─────────────────────────────────────────────────────
 
-    private static final int COL_BG          = 0xFF0A0818;
-    private static final int COL_PANEL_BG    = 0xEE100C24;
-    private static final int COL_PANEL_BORD  = 0xFF2A1A5A;
+    private static final int COL_BG          = 0xFF060410;  // глубокий космос
+    private static final int COL_PANEL_BG    = 0xEE080618;
+    private static final int COL_PANEL_BORD  = 0xFF1E1040;
     private static final int COL_GOLD        = 0xFFC9A227;
-    private static final int COL_GOLD_DIM    = 0xFF7A5E10;
-    private static final int COL_NODE_DARK   = 0xFF080614;
-    private static final int COL_LOCKED      = 0xFF333044;
-    private static final int COL_AVAIL_RING  = 0xFFAAAAAA;
+    private static final int COL_GOLD_BRIGHT = 0xFFFFE060;
+    private static final int COL_GOLD_DIM    = 0xFF6A5210;
+    private static final int COL_NODE_DARK   = 0xFF060410;
+    private static final int COL_LOCKED      = 0xFF2A2840;
     private static final int COL_WHITE       = 0xFFFFFFFF;
     private static final int COL_GRAY        = 0xFF888888;
     private static final int COL_GREEN       = 0xFF55FF55;
@@ -64,9 +61,7 @@ public class SkillTreeScreen extends Screen {
 
     // ─── Состояние камеры ─────────────────────────────────────────────────────
 
-    /** Масштаб: 1 единица дерева = zoom пикселей */
     private float zoom = 0.58f;
-    /** Смещение: экранные координаты центра дерева (узла 0,0) */
     private float camX, camY;
 
     private boolean dragging = false;
@@ -76,21 +71,15 @@ public class SkillTreeScreen extends Screen {
     // ─── Состояние экрана ─────────────────────────────────────────────────────
 
     private SkillNode selectedNode = null;
-    /** Данные из capability, обновляются каждый кадр */
     private Set<String> unlockedNodes = Set.of();
     private int skillPoints = 0;
 
-    /** Позиция кнопки «Изучить» — обновляется во время рендера */
     private int learnBtnX = -1, learnBtnY = -1, learnBtnW = 0, learnBtnH = 16;
-
-    /** Y-координата первого ряда кнопок «В колесо» (-1 = не показываем) */
     private int wheelBtnRowY = -1;
-    /** Spell ID выбранной ноды-заклинания (для обработки кликов по слотам) */
     private String selectedSpellId = null;
-    /** Текущие слоты колеса (синхронизируются из capability) */
     private String[] spellSlots = new String[IPlayerSkills.SPELL_SLOTS];
 
-    /** Счётчик анимации, растёт каждый кадр */
+    /** Счётчик анимации */
     private float tick = 0f;
 
     // ─── Конструктор ──────────────────────────────────────────────────────────
@@ -102,25 +91,19 @@ public class SkillTreeScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        // Центр дерева — середина области дерева
         camX = treeAreaWidth() / 2f;
         camY = height / 2f;
     }
 
     // ─── Вспомогательная геометрия ────────────────────────────────────────────
 
-    /** Ширина области дерева (без правой панели) */
     private int treeAreaWidth() {
         return width - INFO_PANEL_WIDTH - MARGIN * 3;
     }
 
-    /** Дерево → экран X */
     private int tx(float wx) { return Math.round(camX + wx * zoom); }
-    /** Дерево → экран Y */
     private int ty(float wy) { return Math.round(camY + wy * zoom); }
-    /** Экран → дерево X */
     private float wx(double sx) { return (float)((sx - camX) / zoom); }
-    /** Экран → дерево Y */
     private float wy(double sy) { return (float)((sy - camY) / zoom); }
 
     private int nodeRadius(SkillNode n) {
@@ -137,23 +120,12 @@ public class SkillTreeScreen extends Screen {
     @Override
     public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         tick += 0.04f;
-
-        // Обновляем данные из capability каждый кадр
         refreshSkillData();
 
-        // 1. Фон
         renderBackground(gfx, mouseX, mouseY, partialTick);
-
-        // 2. Декоративная граница всего экрана
         renderScreenBorder(gfx);
-
-        // 3. Дерево (линии + ноды)
         renderTree(gfx, mouseX, mouseY);
-
-        // 4. Правая панель информации
         renderInfoPanel(gfx, mouseX, mouseY);
-
-        // 5. Верхняя строка-заголовок
         renderHeader(gfx);
 
         super.render(gfx, mouseX, mouseY, partialTick);
@@ -162,80 +134,106 @@ public class SkillTreeScreen extends Screen {
     // ─── 1. Фон ───────────────────────────────────────────────────────────────
 
     public void renderBackground(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        // Сплошной тёмный фон
         gfx.fill(0, 0, width, height, COL_BG);
         renderStars(gfx);
+        renderCenterAura(gfx);
         renderSchoolAmbience(gfx);
     }
 
-    /** Мерцающие звёзды на фоне */
+    /** Звёздное небо с тремя уровнями яркости и мерцанием */
     private void renderStars(GuiGraphics gfx) {
-        Random rng = new Random(12345L);
-        for (int i = 0; i < 150; i++) {
-            int sx = rng.nextInt(width);
+        Random rng = new Random(98765L);
+        int treeW = treeAreaWidth();
+
+        for (int i = 0; i < 280; i++) {
+            int sx = rng.nextInt(treeW + INFO_PANEL_WIDTH + MARGIN * 3);
             int sy = rng.nextInt(height);
-            float blink = (float)(Math.sin(tick * 1.8f + i * 0.53f) * 0.4f + 0.6f);
-            int a = (int)(blink * 180);
-            int b = (int)(blink * 230);
-            int col = (a << 24) | (b << 16) | (b << 8) | b;
-            if (i % 6 == 0) gfx.fill(sx, sy, sx + 2, sy + 2, col);
-            else             gfx.fill(sx, sy, sx + 1, sy + 1, col);
+
+            // Три типа звёзд: крошечные, малые, крупные
+            int category = i % 9;
+            float blink = (float)(Math.sin(tick * 1.6f + i * 0.47f) * 0.4f + 0.6f);
+
+            if (category < 5) {
+                // Крошечные — 1px, тусклые
+                int a = (int)(blink * 100);
+                int b = (int)(blink * 150);
+                gfx.fill(sx, sy, sx + 1, sy + 1, (a << 24) | (b << 16) | (b << 8) | b);
+            } else if (category < 8) {
+                // Малые — 1px, яркие
+                int a = (int)(blink * 180);
+                int b = (int)(blink * 220);
+                gfx.fill(sx, sy, sx + 1, sy + 1, (a << 24) | (b << 16) | (b << 8) | b);
+            } else {
+                // Крупные — 2px, очень яркие с лёгкой синевой
+                int a = (int)(blink * 220);
+                int r = (int)(blink * 200);
+                int g = (int)(blink * 210);
+                int b = (int)(blink * 255);
+                gfx.fill(sx, sy, sx + 2, sy + 2, (a << 24) | (r << 16) | (g << 8) | b);
+            }
         }
     }
 
-    /**
-     * Мягкое цветное свечение вокруг позиций школ — создаёт атмосферу.
-     * Каждая школа имеет свою зону свечения на экране.
-     */
-    private void renderSchoolAmbience(GuiGraphics gfx) {
-        float pulse = (float)(Math.sin(tick * 1.2f) * 0.15f + 0.85f);
-
-        // Crimson — слева
-        int cx = tx(-420f), cy = ty(0);
-        renderGlowBlob(gfx, cx, cy, (int)(160 * pulse), 0xFF2200, 45);
-        renderSchoolRunes(gfx, cx, cy, "⚔", 0xFFFF2200);
-
-        // Holy — сверху
-        int hx = tx(0), hy = ty(-420f);
-        renderGlowBlob(gfx, hx, hy, (int)(160 * pulse), 0xFFD700, 45);
-        renderSchoolRunes(gfx, hx, hy, "✦", 0xFFFFD700);
-
-        // Cultist — справа
-        int ux = tx(420f), uy = ty(0);
-        renderGlowBlob(gfx, ux, uy, (int)(160 * pulse), 0x9900CC, 45);
-        renderSchoolRunes(gfx, ux, uy, "☽", 0xFFA020F0);
-
-        // Puppet — снизу
-        int px = tx(0), py = ty(420f);
-        renderGlowBlob(gfx, px, py, (int)(160 * pulse), 0x00CC88, 45);
-        renderSchoolRunes(gfx, px, py, "✿", 0xFF00CC88);
+    /** Слабое золотое сияние из центра дерева — как источник маны */
+    private void renderCenterAura(GuiGraphics gfx) {
+        int cx = tx(0), cy = ty(0);
+        float pulse = (float)(Math.sin(tick * 1.5f) * 0.15f + 0.85f);
+        // Очень мягкое радиальное золотое свечение
+        renderGlowBlob(gfx, cx, cy, (int)(180 * pulse), 0x8B5A00, 35);
+        renderGlowBlob(gfx, cx, cy, (int)(80 * pulse), 0xC9A227, 20);
     }
 
     /**
-     * Нарисовать мягкое сферическое свечение (концентрические полупрозрачные прямоугольники).
+     * Цветное свечение вокруг зон школ.
+     * Двухслойное: внешний широкий туман + внутреннее насыщенное ядро.
      */
+    private void renderSchoolAmbience(GuiGraphics gfx) {
+        float pulse = (float)(Math.sin(tick * 0.9f) * 0.12f + 0.88f);
+
+        // Crimson — слева
+        int cx = tx(-420f), cy = ty(0);
+        renderGlowBlob(gfx, cx, cy, (int)(220 * pulse), 0xFF2200, 50);
+        renderGlowBlob(gfx, cx, cy, (int)(100 * pulse), 0xFF5500, 35);
+        renderSchoolSymbol(gfx, cx, cy, "⚔", 0xFF2200, 0x28);
+
+        // Holy — сверху
+        int hx = tx(0), hy = ty(-420f);
+        renderGlowBlob(gfx, hx, hy, (int)(220 * pulse), 0xBB8800, 50);
+        renderGlowBlob(gfx, hx, hy, (int)(100 * pulse), 0xFFD700, 35);
+        renderSchoolSymbol(gfx, hx, hy, "✦", 0xFFD700, 0x28);
+
+        // Cultist — справа
+        int ux = tx(420f), uy = ty(0);
+        renderGlowBlob(gfx, ux, uy, (int)(220 * pulse), 0x7010CC, 50);
+        renderGlowBlob(gfx, ux, uy, (int)(100 * pulse), 0xA020F0, 35);
+        renderSchoolSymbol(gfx, ux, uy, "☽", 0xA020F0, 0x28);
+
+        // Puppet — снизу
+        int px = tx(0), py = ty(420f);
+        renderGlowBlob(gfx, px, py, (int)(220 * pulse), 0x009966, 50);
+        renderGlowBlob(gfx, px, py, (int)(100 * pulse), 0x00CC88, 35);
+        renderSchoolSymbol(gfx, px, py, "✿", 0x00CC88, 0x28);
+    }
+
+    /** Прямоугольное градиентное свечение (быстрое, для фона) */
     private void renderGlowBlob(GuiGraphics gfx, int cx, int cy, int radius, int rgb, int maxAlpha) {
-        for (int r = radius; r > 0; r -= 14) {
-            int alpha = maxAlpha * (radius - r) / radius / 2;
+        int steps = 10;
+        int stepSize = Math.max(1, radius / steps);
+        for (int r = radius; r > 0; r -= stepSize) {
+            float t = 1.0f - (float) r / radius;
+            int alpha = (int)(maxAlpha * t * t * 0.6f);
             gfx.fill(cx - r, cy - r, cx + r, cy + r, (alpha << 24) | (rgb & 0xFFFFFF));
         }
     }
 
-    /**
-     * Нарисовать декоративный символ школы большого размера (3x scale) — как фоновый рисунок.
-     */
-    private void renderSchoolRunes(GuiGraphics gfx, int cx, int cy, String symbol, int color) {
-        // Ограничиваем область дерева
-        if (cx < -40 || cx > treeAreaWidth() + 40) return;
-        if (cy < -40 || cy > height + 40) return;
-
-        int alpha = 0x30; // очень прозрачно — фоновый элемент
-        int col   = (alpha << 24) | (color & 0xFFFFFF);
-
-        // Рисуем символ 3 раза со сдвигами для эффекта "большого" символа
+    /** Большой декоративный символ школы (фоновый слой) */
+    private void renderSchoolSymbol(GuiGraphics gfx, int cx, int cy, String symbol, int rgb, int alpha) {
+        if (cx < -60 || cx > treeAreaWidth() + 60) return;
+        if (cy < -60 || cy > height + 60) return;
+        int col = (alpha << 24) | (rgb & 0xFFFFFF);
         gfx.pose().pushPose();
-        gfx.pose().translate(cx - 12, cy - 8, 0);
-        gfx.pose().scale(3f, 3f, 1f);
+        gfx.pose().translate(cx - 14, cy - 9, 0);
+        gfx.pose().scale(3.5f, 3.5f, 1f);
         gfx.drawString(font, symbol, 0, 0, col, false);
         gfx.pose().popPose();
     }
@@ -243,146 +241,432 @@ public class SkillTreeScreen extends Screen {
     // ─── 2. Граница экрана ────────────────────────────────────────────────────
 
     private void renderScreenBorder(GuiGraphics gfx) {
-        // Внешняя рамка — тонкая золотая линия
-        gfx.fill(0, 0, width, 1, COL_GOLD_DIM);
-        gfx.fill(0, height - 1, width, height, COL_GOLD_DIM);
-        gfx.fill(0, 0, 1, height, COL_GOLD_DIM);
-        gfx.fill(width - 1, 0, width, height, COL_GOLD_DIM);
+        // Внешняя рамка — двойная
+        gfx.fill(0, 0, width, 2, COL_GOLD_DIM);
+        gfx.fill(0, height - 2, width, height, COL_GOLD_DIM);
+        gfx.fill(0, 0, 2, height, COL_GOLD_DIM);
+        gfx.fill(width - 2, 0, width, height, COL_GOLD_DIM);
+
+        // Внутренняя яркая рамка
+        gfx.fill(3, 3, width - 3, 4, COL_GOLD_DIM);
+        gfx.fill(3, height - 4, width - 3, height - 3, COL_GOLD_DIM);
+        gfx.fill(3, 3, 4, height - 3, COL_GOLD_DIM);
+        gfx.fill(width - 4, 3, width - 3, height - 3, COL_GOLD_DIM);
+
+        // Угловые L-образные украшения
+        drawCornerOrnament(gfx, 6, 6, 12, COL_GOLD_DIM);
+        drawCornerOrnament(gfx, width - 6, 6, 12, COL_GOLD_DIM);
+        drawCornerOrnament(gfx, 6, height - 6, 12, COL_GOLD_DIM);
+        drawCornerOrnament(gfx, width - 6, height - 6, 12, COL_GOLD_DIM);
 
         // Разделитель между деревом и панелью
         int divX = treeAreaWidth() + MARGIN;
-        gfx.fill(divX, 0, divX + 1, height, COL_PANEL_BORD);
+        gfx.fill(divX, 0, divX + 1, height, 0xFF1A0E3A);
+        gfx.fill(divX + 1, 20, divX + 2, height - 20, 0xFF2A1A50);
+
+        // Декоративные точки вдоль разделителя
+        for (int y = 40; y < height - 40; y += 30) {
+            float dp = (float)(Math.sin(tick * 2f + y * 0.05f) * 0.4f + 0.6f);
+            int da = (int)(80 * dp);
+            gfx.fill(divX, y - 1, divX + 2, y + 1, (da << 24) | 0xC9A227);
+        }
+    }
+
+    /** Рисует угловое L-образное золотое украшение */
+    private void drawCornerOrnament(GuiGraphics gfx, int x, int y, int size, int col) {
+        boolean left  = (x < width / 2);
+        boolean top   = (y < height / 2);
+        int sx = left ? x : x - size;
+        int sy = top  ? y : y - size;
+
+        // Горизонтальная линия
+        gfx.fill(sx, sy, sx + size, sy + 2, col);
+        // Вертикальная линия
+        gfx.fill(sx, sy, sx + 2, sy + size, col);
+        // Конечная точка (противоположный угол)
+        if (!left) { gfx.fill(sx + size - 2, sy, sx + size, sy + 2, col); }
+        if (!top)  { gfx.fill(sx, sy + size - 2, sx + 2, sy + size, col); }
     }
 
     // ─── 3. Дерево нод ────────────────────────────────────────────────────────
 
     private void renderTree(GuiGraphics gfx, int mouseX, int mouseY) {
-        // Линии соединения
+        // Сначала соединительные линии
         for (String[] conn : SkillTree.getConnections()) {
             SkillNode a = SkillTree.getById(conn[0]);
             SkillNode b = SkillTree.getById(conn[1]);
             if (a != null && b != null) renderConnection(gfx, a, b);
         }
-
         // Ноды поверх линий
         for (SkillNode node : SkillTree.getAllNodes()) {
             renderNode(gfx, node, mouseX, mouseY);
         }
     }
 
-    /** Линия соединения двух нод */
+    /**
+     * Многослойная соединительная линия:
+     * — открытая: 4 слоя (внешнее свечение, среднее, ядро, блик) + 3 текущих частицы
+     * — полуоткрытая: 2 слоя тусклой линии
+     * — закрытая: 1 тонкая тёмная линия
+     */
     private void renderConnection(GuiGraphics gfx, SkillNode a, SkillNode b) {
         int x1 = tx(a.getX()), y1 = ty(a.getY());
         int x2 = tx(b.getX()), y2 = ty(b.getY());
 
         boolean aUnl = unlockedNodes.contains(a.getId());
         boolean bUnl = unlockedNodes.contains(b.getId());
+        int schoolRgb = b.getSchool() != MagicSchool.NONE ? b.getSchool().color : a.getSchool().color;
 
-        int lineColor;
-        int lineW;
         if (aUnl && bUnl) {
-            // Обе открыты — яркая линия цвета школы
-            lineColor = b.getSchool().colorWithAlpha(0xFF);
-            lineW = 3;
+            // Слой 1: широкое мягкое свечение
+            drawLine(gfx, x1, y1, x2, y2, 0x18000000 | (schoolRgb & 0xFFFFFF), 9);
+            // Слой 2: среднее свечение
+            drawLine(gfx, x1, y1, x2, y2, 0x38000000 | (schoolRgb & 0xFFFFFF), 5);
+            // Слой 3: основная цветная линия
+            drawLine(gfx, x1, y1, x2, y2, 0xCC000000 | (schoolRgb & 0xFFFFFF), 3);
+            // Слой 4: яркий белый блик по центру
+            drawLine(gfx, x1, y1, x2, y2, 0x88FFFFFF, 1);
+
+            // Три текущих частицы, движущихся по линии со смещением фаз
+            for (int p = 0; p < 3; p++) {
+                float t = ((tick * 0.55f + p * 0.333f) % 1.0f);
+                int spx = (int)(x1 + (x2 - x1) * t);
+                int spy = (int)(y1 + (y2 - y1) * t);
+                // Ореол частицы
+                gfx.fill(spx - 3, spy - 3, spx + 3, spy + 3, 0x30000000 | (schoolRgb & 0xFFFFFF));
+                // Тело частицы
+                gfx.fill(spx - 1, spy - 1, spx + 2, spy + 2, 0xDD000000 | (schoolRgb & 0xFFFFFF));
+                // Белый блик
+                gfx.fill(spx, spy, spx + 1, spy + 1, 0xCCFFFFFF);
+            }
+
         } else if (aUnl) {
-            // Источник открыт — тусклая
-            lineColor = b.getSchool().colorWithAlpha(0x66);
-            lineW = 2;
+            // Источник открыт — тусклая линия с намёком на цвет
+            drawLine(gfx, x1, y1, x2, y2, 0x22000000 | (schoolRgb & 0xFFFFFF), 5);
+            drawLine(gfx, x1, y1, x2, y2, 0x66000000 | (schoolRgb & 0xFFFFFF), 2);
         } else {
-            // Обе закрыты
-            lineColor = 0x33555566;
-            lineW = 1;
-        }
-
-        drawLine(gfx, x1, y1, x2, y2, lineColor, lineW);
-
-        // Анимированная "искра" бежит по открытой линии
-        if (aUnl && bUnl) {
-            float t = (tick * 0.6f) % 1.0f;
-            int sx = (int)(x1 + (x2 - x1) * t);
-            int sy = (int)(y1 + (y2 - y1) * t);
-            int sparkCol = b.getSchool().colorWithAlpha(0xCC);
-            gfx.fill(sx - 2, sy - 2, sx + 2, sy + 2, sparkCol);
+            // Обе закрыты — едва видная линия
+            drawLine(gfx, x1, y1, x2, y2, 0x22334455, 2);
         }
     }
 
-    /** Рендер одной ноды со всеми эффектами */
+    /** Диспетчер рендера ноды по типу */
     private void renderNode(GuiGraphics gfx, SkillNode node, int mouseX, int mouseY) {
         int sx = tx(node.getX()), sy = ty(node.getY());
         int r  = nodeRadius(node);
 
-        // Выход за экран — пропускаем
-        if (sx + r < 0 || sx - r > treeAreaWidth()) return;
-        if (sy + r < 0 || sy - r > height)           return;
+        // Отсечение по экрану (с запасом для свечения)
+        if (sx + r + 50 < 0 || sx - r - 50 > treeAreaWidth()) return;
+        if (sy + r + 50 < 0 || sy - r - 50 > height)          return;
 
-        boolean unlocked   = unlockedNodes.contains(node.getId());
-        boolean available  = isAvailable(node);
-        boolean selected   = (node == selectedNode);
-        boolean hovered    = isHovered(node, mouseX, mouseY);
+        boolean unlocked  = unlockedNodes.contains(node.getId());
+        boolean available = isAvailable(node);
+        boolean selected  = (node == selectedNode);
+        boolean hovered   = isHovered(node, mouseX, mouseY);
 
-        int schoolRgb = node.getSchool().color;
-
-        // ── Внешнее свечение ─────────────────────────────────────────────────
-        if (unlocked) {
-            float glowPulse = (float)(Math.sin(tick * 3.0f + node.getX() * 0.005f) * 0.3f + 0.7f);
-            renderGlow(gfx, sx, sy, r + 10, schoolRgb, (int)(glowPulse * 90));
-        } else if (available) {
-            float avPulse = (float)(Math.sin(tick * 4.5f) * 0.5f + 0.5f);
-            renderGlow(gfx, sx, sy, r + 6, 0xCCCCCC, (int)(avPulse * 40));
+        switch (node.getType()) {
+            case CENTRAL -> renderCentralNode(gfx, sx, sy, r, unlocked, selected, hovered);
+            case GATEWAY -> renderGatewayNode(gfx, sx, sy, r, node, unlocked, available, selected, hovered);
+            case SPELL   -> renderSpellNode  (gfx, sx, sy, r, node, unlocked, available, selected, hovered);
+            case PASSIVE -> renderPassiveNode(gfx, sx, sy, r, node, unlocked, available, selected, hovered);
         }
 
-        // Дополнительный яркий ореол при выборе
-        if (selected) {
-            renderGlow(gfx, sx, sy, r + 8, schoolRgb, 80);
-        }
-
-        // ── Заполнение круга ─────────────────────────────────────────────────
-        // Тёмная подложка
-        drawCircle(gfx, sx, sy, r, COL_NODE_DARK);
-
-        // Цветная заливка с прозрачностью
-        int fillAlpha = unlocked ? 0x99 : (available ? 0x44 : 0x22);
-        drawCircle(gfx, sx, sy, r - 1, (fillAlpha << 24) | (schoolRgb & 0xFFFFFF));
-
-        // ── Ободок ───────────────────────────────────────────────────────────
-        int borderCol;
-        int borderW = selected ? 2 : 1;
-        if (unlocked)        borderCol = 0xFF000000 | schoolRgb;
-        else if (available)  borderCol = COL_AVAIL_RING;
-        else                 borderCol = COL_LOCKED;
-        drawCircleOutline(gfx, sx, sy, r, borderCol, borderW);
-
-        // ── Символ внутри ────────────────────────────────────────────────────
-        renderNodeSymbol(gfx, node, sx, sy, unlocked, available);
-
-        // ── Название под нодой (только если достаточно большой зум) ──────────
-        if (zoom > 0.75f) {
+        // Название под нодой при достаточном зуме
+        if (zoom > 0.72f) {
             String name = node.getName();
-            int tw = font.width(name);
-            int textCol = unlocked ? (0xFF000000 | schoolRgb) : (available ? 0xFFAAAAAA : 0xFF555555);
-            gfx.drawString(font, name, sx - tw / 2, sy + r + 3, textCol, false);
+            int tw  = font.width(name);
+            int textY = sy + r + 3;
+            int textX = sx - tw / 2;
+            int schoolRgb = node.getSchool().color;
+            int textCol = unlocked
+                    ? (0xFF000000 | schoolRgb)
+                    : (available ? 0xFFAAAAAA : 0xFF444455);
+
+            // Тень подписи
+            gfx.drawString(font, name, textX + 1, textY + 1, 0x80000000, false);
+            gfx.drawString(font, name, textX, textY, textCol, false);
         }
     }
 
-    /** Символ (иконка) внутри ноды */
-    private void renderNodeSymbol(GuiGraphics gfx, SkillNode node, int sx, int sy,
-                                   boolean unlocked, boolean available) {
-        String sym;
-        int col;
-        switch (node.getType()) {
-            case CENTRAL -> { sym = "✦"; col = unlocked ? COL_GOLD        : 0xFF555555; }
-            case GATEWAY -> { sym = "⚑"; col = unlocked ? (0xFF000000 | node.getSchool().color) : (available ? 0xFF888888 : 0xFF3A3A3A); }
-            case PASSIVE -> { sym = "◈"; col = unlocked ? 0xFFDDDDDD     : (available ? 0xFF777777 : 0xFF333333); }
-            case SPELL   -> { sym = "✵"; col = unlocked ? (0xFF000000 | node.getSchool().color) : (available ? 0xFF888888 : 0xFF3A3A3A); }
-            default      -> { sym = "?"; col = COL_WHITE; }
-        }
-        int tx = sx - font.width(sym) / 2;
-        int ty = sy - font.lineHeight / 2;
+    // ─── Рендер центральной ноды (золотое солнце) ─────────────────────────────
+
+    private void renderCentralNode(GuiGraphics gfx, int sx, int sy, int r,
+                                    boolean unlocked, boolean selected, boolean hovered) {
+        float pulse = (float)(Math.sin(tick * 2.0f) * 0.25f + 0.75f);
+
+        // Вращающиеся 8 лучей
         if (unlocked) {
-            // Лёгкое свечение текста — тень того же цвета
-            gfx.drawString(font, sym, tx + 1, ty + 1, (col & 0xFFFFFF) | 0x55000000, false);
+            for (int i = 0; i < 8; i++) {
+                double angle = tick * 0.35 + i * Math.PI / 4;
+                int bx = sx + (int)(Math.cos(angle) * (r + 20));
+                int by = sy + (int)(Math.sin(angle) * (r + 20));
+                int beamA = (int)(50 * pulse);
+                drawLine(gfx, sx, sy, bx, by, (beamA << 24) | 0xC9A227, 1);
+            }
+            // Контр-вращающиеся 4 луча
+            for (int i = 0; i < 4; i++) {
+                double angle = -tick * 0.2 + i * Math.PI / 2 + Math.PI / 8;
+                int bx = sx + (int)(Math.cos(angle) * (r + 14));
+                int by = sy + (int)(Math.sin(angle) * (r + 14));
+                int beamA = (int)(30 * pulse);
+                drawLine(gfx, sx, sy, bx, by, (beamA << 24) | 0xFFE070, 1);
+            }
         }
-        gfx.drawString(font, sym, tx, ty, col, false);
+
+        // Внешнее свечение
+        renderGlow(gfx, sx, sy, r + 28, 0xC9A227, unlocked ? (int)(100 * pulse) : 22);
+        if (unlocked) {
+            // Дополнительный белый ореол
+            renderGlow(gfx, sx, sy, r + 16, 0xFFFF88, (int)(40 * pulse));
+        }
+
+        // Внешнее пунктирное кольцо
+        drawDashedCircle(gfx, sx, sy, r + 11, 0xC9A227, unlocked ? 0xBB : 0x22, 24);
+
+        // Вращающийся многоугольник (8 сторон)
+        float polyAngle = (float)(tick * (unlocked ? 0.25 : 0));
+        drawPolygon(gfx, sx, sy, r + 7, 8, polyAngle,
+                unlocked ? 0x66C9A227 : 0x11332211, 1);
+
+        // Тёмная подложка + золотая заливка
+        drawCircle(gfx, sx, sy, r + 1, 0xFF040310);
+        int fillA = unlocked ? 0x99 : 0x33;
+        drawCircle(gfx, sx, sy, r, (fillA << 24) | 0x7B4A00);
+
+        // Внутренний яркий диск при открытии
+        if (unlocked) {
+            int innerA = (int)(70 * pulse);
+            drawCircle(gfx, sx, sy, r / 3, (innerA << 24) | 0xFFD060);
+        }
+
+        // Двойное кольцо-бордюр
+        drawCircleOutline(gfx, sx, sy, r + 1, unlocked ? 0xFFC9A227 : 0xFF1A1230, 2);
+        drawCircleOutline(gfx, sx, sy, r - 3, unlocked ? 0x88C9A227 : 0x22100C20, 1);
+
+        // Центральный символ ✦
+        String sym = "✦";
+        int symW = font.width(sym);
+        int symX = sx - symW / 2;
+        int symY = sy - font.lineHeight / 2;
+        int symCol = unlocked ? 0xFFFFF080 : 0xFF443322;
+        if (unlocked) {
+            // Четыре тени для эффекта свечения
+            int shadowCol = 0x66C9A227;
+            gfx.drawString(font, sym, symX + 1, symY + 1, shadowCol, false);
+            gfx.drawString(font, sym, symX - 1, symY - 1, shadowCol, false);
+            gfx.drawString(font, sym, symX + 1, symY - 1, shadowCol, false);
+            gfx.drawString(font, sym, symX - 1, symY + 1, shadowCol, false);
+        }
+        gfx.drawString(font, sym, symX, symY, symCol, false);
+
+        // Пульсирующее кольцо при выборе/наведении
+        if (selected || hovered) {
+            float sp = (float)(Math.sin(tick * 9f) * 0.4f + 0.6f);
+            drawCircleOutline(gfx, sx, sy, r + 5, (int)(200 * sp) << 24 | 0xFFE040, 1);
+            drawCircleOutline(gfx, sx, sy, r + 8, (int)(80 * sp) << 24 | 0xC9A227, 1);
+        }
+    }
+
+    // ─── Рендер ворот школы (шестигранный кристалл) ──────────────────────────
+
+    private void renderGatewayNode(GuiGraphics gfx, int sx, int sy, int r,
+                                    SkillNode node, boolean unlocked, boolean available,
+                                    boolean selected, boolean hovered) {
+        int schoolRgb = node.getSchool().color;
+        float pulse = (float)(Math.sin(tick * 2.5f + node.getX() * 0.003f) * 0.3f + 0.7f);
+
+        // Внешнее свечение
+        int glowA = unlocked ? (int)(90 * pulse) : (available ? 28 : 10);
+        renderGlow(gfx, sx, sy, r + 16, schoolRgb, glowA);
+
+        // Вращающийся внешний шестиугольник
+        float hexAngle = (float)(tick * (unlocked ? 0.45 : 0));
+        drawPolygon(gfx, sx, sy, r + 7, 6, hexAngle,
+                unlocked ? (0xBB000000 | schoolRgb) : (available ? 0x44666688 : 0x1A333344), 1);
+
+        // Статичный внутренний шестиугольник (обратного направления)
+        if (unlocked) {
+            drawPolygon(gfx, sx, sy, r + 4, 6, hexAngle + (float)(Math.PI / 6),
+                    0x44000000 | schoolRgb, 1);
+        }
+
+        // Пунктирное кольцо при открытии
+        if (unlocked) {
+            drawDashedCircle(gfx, sx, sy, r + 10, schoolRgb,
+                    (int)(0x66 * pulse), 16);
+        }
+
+        // Тёмная подложка + школьная заливка
+        drawCircle(gfx, sx, sy, r, 0xFF060410);
+        int fillA = unlocked ? 0xAA : (available ? 0x44 : 0x20);
+        drawCircle(gfx, sx, sy, r - 1, (fillA << 24) | (schoolRgb & 0xFFFFFF));
+
+        // Внутреннее яркое ядро
+        if (unlocked) {
+            int coreA = (int)(80 * pulse);
+            drawCircle(gfx, sx, sy, r / 3, (coreA << 24) | 0xFFFFFF);
+        }
+
+        // Бордюр (двойной при открытии)
+        int borderA = unlocked ? 0xFF : (available ? 0xBB : 0x55);
+        int borderC = unlocked
+                ? (0xFF000000 | schoolRgb)
+                : (available ? 0xFF9999BB : 0xFF2A2A3A);
+        drawCircleOutline(gfx, sx, sy, r, borderC, unlocked ? 2 : 1);
+        if (unlocked) {
+            drawCircleOutline(gfx, sx, sy, r - 3, 0x44000000 | schoolRgb, 1);
+        }
+
+        // Символ ⚑ (флаг школы)
+        String sym = "⚑";
+        int symX = sx - font.width(sym) / 2;
+        int symY = sy - font.lineHeight / 2;
+        int symCol = unlocked
+                ? (0xFF000000 | schoolRgb)
+                : (available ? 0xFF8888AA : 0xFF3A3A4A);
+        if (unlocked) {
+            gfx.drawString(font, sym, symX + 1, symY + 1, 0x55000000 | (schoolRgb & 0xFFFFFF), false);
+        }
+        gfx.drawString(font, sym, symX, symY, symCol, false);
+
+        // Искры на вершинах шестиугольника
+        if (unlocked) {
+            for (int i = 0; i < 6; i++) {
+                double vAngle = hexAngle + i * Math.PI / 3;
+                int vx = sx + (int)(Math.cos(vAngle) * (r + 7));
+                int vy = sy + (int)(Math.sin(vAngle) * (r + 7));
+                float vp = (float)(Math.sin(tick * 5f + i * 1.047f) * 0.5f + 0.5f);
+                int va = (int)(230 * vp);
+                gfx.fill(vx - 1, vy - 1, vx + 2, vy + 2, (va << 24) | (schoolRgb & 0xFFFFFF));
+            }
+        }
+
+        // Кольцо выбора/наведения
+        if (selected || hovered) {
+            float sp = (float)(Math.sin(tick * 9f) * 0.4f + 0.6f);
+            drawCircleOutline(gfx, sx, sy, r + 4, (int)(200 * sp) << 24 | (schoolRgb & 0xFFFFFF), 1);
+        }
+    }
+
+    // ─── Рендер ноды заклинания (вращающийся бриллиант) ──────────────────────
+
+    private void renderSpellNode(GuiGraphics gfx, int sx, int sy, int r,
+                                  SkillNode node, boolean unlocked, boolean available,
+                                  boolean selected, boolean hovered) {
+        int schoolRgb = node.getSchool().color;
+        float pulse = (float)(Math.sin(tick * 3.0f + node.getX() * 0.004f) * 0.4f + 0.6f);
+
+        // Внешнее свечение
+        int glowA = unlocked ? (int)(100 * pulse) : (available ? 22 : 8);
+        renderGlow(gfx, sx, sy, r + 14, schoolRgb, glowA);
+
+        // Вращающийся внешний бриллиант (4 стороны)
+        float dia1 = (float)(tick * (unlocked ? 0.7f : 0) + Math.PI / 4);
+        drawPolygon(gfx, sx, sy, r + 7, 4, dia1,
+                unlocked ? (0xCC000000 | schoolRgb) : (available ? 0x33888899 : 0x12333344), 1);
+
+        // Контр-вращающийся второй бриллиант
+        if (unlocked) {
+            float dia2 = (float)(-tick * 0.4f + Math.PI / 4);
+            drawPolygon(gfx, sx, sy, r + 4, 4, dia2,
+                    0x44000000 | schoolRgb, 1);
+        }
+
+        // Тёмная подложка + школьная заливка
+        drawCircle(gfx, sx, sy, r, 0xFF060410);
+        int fillA = unlocked ? 0xCC : (available ? 0x55 : 0x20);
+        drawCircle(gfx, sx, sy, r - 1, (fillA << 24) | (schoolRgb & 0xFFFFFF));
+
+        // Блик-самоцвет в центре
+        if (unlocked) {
+            int gemA = (int)(120 * pulse);
+            drawCircle(gfx, sx, sy, r / 2, (gemA << 24) | 0xFFFFFF);
+            int coreA = (int)(200 * pulse);
+            drawCircle(gfx, sx, sy, r / 4, Math.min(255, coreA) << 24 | 0xFFFFDD);
+        }
+
+        // Бордюр + внутреннее кольцо
+        drawCircleOutline(gfx, sx, sy, r,
+                unlocked ? (0xFF000000 | schoolRgb) : (available ? 0xFF888899 : 0xFF2A2A3A), 2);
+        if (unlocked) {
+            drawCircleOutline(gfx, sx, sy, r - 3, 0x44000000 | schoolRgb, 1);
+        }
+
+        // Символ ✵
+        String sym = "✵";
+        int symX = sx - font.width(sym) / 2;
+        int symY = sy - font.lineHeight / 2;
+        int symCol = unlocked ? 0xFFFFFFCC : (available ? 0xFF888899 : 0xFF333344);
+        if (unlocked) {
+            // Свечение символа
+            int shadowRgb = 0x44000000 | (schoolRgb & 0xFFFFFF);
+            gfx.drawString(font, sym, symX + 1, symY + 1, shadowRgb, false);
+            gfx.drawString(font, sym, symX - 1, symY - 1, shadowRgb, false);
+            gfx.drawString(font, sym, symX + 1, symY - 1, shadowRgb, false);
+            gfx.drawString(font, sym, symX - 1, symY + 1, shadowRgb, false);
+        }
+        gfx.drawString(font, sym, symX, symY, symCol, false);
+
+        // Кольцо выбора — пунктирное
+        if (selected || hovered) {
+            float sp = (float)(Math.sin(tick * 9f) * 0.4f + 0.6f);
+            drawDashedCircle(gfx, sx, sy, r + 5, schoolRgb, (int)(180 * sp), 12);
+            drawCircleOutline(gfx, sx, sy, r + 3, (int)(100 * sp) << 24 | (schoolRgb & 0xFFFFFF), 1);
+        }
+    }
+
+    // ─── Рендер пассивной ноды (орбитальный кристалл) ────────────────────────
+
+    private void renderPassiveNode(GuiGraphics gfx, int sx, int sy, int r,
+                                    SkillNode node, boolean unlocked, boolean available,
+                                    boolean selected, boolean hovered) {
+        int schoolRgb = node.getSchool().color;
+        float pulse = (float)(Math.sin(tick * 2.0f + node.getY() * 0.005f) * 0.3f + 0.7f);
+
+        // Внешнее свечение
+        renderGlow(gfx, sx, sy, r + 10, schoolRgb, unlocked ? (int)(65 * pulse) : (available ? 18 : 6));
+
+        // Орбитальные частицы при открытии
+        if (unlocked) {
+            for (int i = 0; i < 4; i++) {
+                double orbitAngle = tick * 2.2 + i * Math.PI / 2;
+                int ox = sx + (int)(Math.cos(orbitAngle) * (r + 5));
+                int oy = sy + (int)(Math.sin(orbitAngle) * (r + 5));
+                float op = (float)(Math.sin(tick * 4.5f + i * 1.571f) * 0.4f + 0.6f);
+                int oa = (int)(200 * op);
+                gfx.fill(ox, oy, ox + 2, oy + 2, (oa << 24) | (schoolRgb & 0xFFFFFF));
+            }
+        }
+
+        // Тёмная подложка + заливка
+        drawCircle(gfx, sx, sy, r, 0xFF060410);
+        int fillA = unlocked ? 0x88 : (available ? 0x44 : 0x20);
+        drawCircle(gfx, sx, sy, r - 1, (fillA << 24) | (schoolRgb & 0xFFFFFF));
+
+        // Двойной бордюр при открытии
+        int borderC = unlocked
+                ? (0xFF000000 | schoolRgb)
+                : (available ? 0xFFAAAAAA : 0xFF333344);
+        drawCircleOutline(gfx, sx, sy, r, borderC, unlocked ? 2 : 1);
+        if (unlocked) {
+            drawCircleOutline(gfx, sx, sy, r + 2, 0x44000000 | schoolRgb, 1);
+        }
+
+        // Символ ◈
+        String sym = "◈";
+        int symX = sx - font.width(sym) / 2;
+        int symY = sy - font.lineHeight / 2;
+        int symCol = unlocked ? 0xFFCCEECC : (available ? 0xFF777788 : 0xFF333344);
+        if (unlocked) {
+            gfx.drawString(font, sym, symX + 1, symY + 1, 0x44000000 | (schoolRgb & 0xFFFFFF), false);
+        }
+        gfx.drawString(font, sym, symX, symY, symCol, false);
+
+        // Кольцо выбора/наведения
+        if (selected || hovered) {
+            float sp = (float)(Math.sin(tick * 9f) * 0.4f + 0.6f);
+            drawCircleOutline(gfx, sx, sy, r + 4, (int)(170 * sp) << 24 | (schoolRgb & 0xFFFFFF), 1);
+        }
     }
 
     // ─── 4. Правая панель ─────────────────────────────────────────────────────
@@ -393,77 +677,95 @@ public class SkillTreeScreen extends Screen {
         int pw = INFO_PANEL_WIDTH;
         int ph = height - MARGIN * 2;
 
-        // Фон
+        // Основной фон
         gfx.fill(px, py, px + pw, py + ph, COL_PANEL_BG);
+        // Тонкий светлый блик сверху
+        gfx.fill(px + 3, py + 3, px + pw - 3, py + 4, 0x08FFFFFF);
 
-        // Внутренняя рамка
-        gfx.fill(px,      py,      px + pw,      py + 1,  COL_PANEL_BORD);
-        gfx.fill(px,      py + ph - 1, px + pw,  py + ph, COL_PANEL_BORD);
-        gfx.fill(px,      py,      px + 1,      py + ph,  COL_PANEL_BORD);
-        gfx.fill(px + pw - 1, py, px + pw, py + ph,       COL_PANEL_BORD);
+        // Орнаментальная рамка — внешняя тёмная
+        gfx.fill(px,      py,           px + pw,      py + 1,      COL_PANEL_BORD);
+        gfx.fill(px,      py + ph - 1,  px + pw,      py + ph,     COL_PANEL_BORD);
+        gfx.fill(px,      py,           px + 1,        py + ph,    COL_PANEL_BORD);
+        gfx.fill(px + pw - 1, py,       px + pw,       py + ph,    COL_PANEL_BORD);
 
-        // Угловые украшения
-        gfx.fill(px + 3, py + 3, px + 8, py + 4, COL_GOLD_DIM);
-        gfx.fill(px + 3, py + 3, px + 4, py + 8, COL_GOLD_DIM);
-        gfx.fill(px + pw - 8, py + 3, px + pw - 3, py + 4, COL_GOLD_DIM);
-        gfx.fill(px + pw - 4, py + 3, px + pw - 3, py + 8, COL_GOLD_DIM);
+        // Внутренняя рамка чуть ярче
+        gfx.fill(px + 3,      py + 3,       px + pw - 3,  py + 4,       0xFF100830);
+        gfx.fill(px + 3,      py + ph - 4,  px + pw - 3,  py + ph - 3,  0xFF100830);
+        gfx.fill(px + 3,      py + 3,       px + 4,        py + ph - 3, 0xFF100830);
+        gfx.fill(px + pw - 4, py + 3,       px + pw - 3,   py + ph - 3, 0xFF100830);
 
-        int y = py + 12;
+        // Угловые золотые украшения
+        drawPanelCorner(gfx, px + 4,       py + 4,       10, true,  true);
+        drawPanelCorner(gfx, px + pw - 4,  py + 4,       10, false, true);
+        drawPanelCorner(gfx, px + 4,       py + ph - 4,  10, true,  false);
+        drawPanelCorner(gfx, px + pw - 4,  py + ph - 4,  10, false, false);
 
-        // Очки навыков
-        gfx.drawCenteredString(font, "✦ ОЧКИ НАВЫКОВ ✦", px + pw / 2, y, COL_GOLD);
-        y += 14;
+        int y = py + 14;
 
+        // Заголовок очков
+        gfx.drawCenteredString(font, "✦  ОЧКИ НАВЫКОВ  ✦", px + pw / 2, y, COL_GOLD);
+        y += 13;
+
+        // Число очков с цветом
         String pts = String.valueOf(skillPoints);
-        gfx.drawCenteredString(font, pts, px + pw / 2, y, skillPoints > 0 ? COL_GREEN : COL_RED);
+        int ptsCol = skillPoints > 0 ? COL_GREEN : COL_RED;
+        gfx.drawString(font, pts, px + pw / 2 - font.width(pts) / 2 + 1, y + 1, 0x80000000, false);
+        gfx.drawCenteredString(font, pts, px + pw / 2, y, ptsCol);
         y += 16;
 
-        // Разделитель
         y = drawSeparator(gfx, px, y, pw, COL_PANEL_BORD);
 
-        // Информация о выбранной ноде
         if (selectedNode != null) {
             y = renderNodeInfo(gfx, px, y, pw, selectedNode, mouseX, mouseY);
         } else {
-            gfx.drawCenteredString(font, "§7Нажмите на ноду", px + pw / 2, y + 20, COL_GRAY);
-            gfx.drawCenteredString(font, "§7для просмотра", px + pw / 2, y + 32, COL_GRAY);
-            learnBtnX    = -1; // нет кнопки «Изучить»
-            wheelBtnRowY = -1; // нет кнопок «В колесо»
+            // Подсказка
+            gfx.drawCenteredString(font, "§7Выберите ноду", px + pw / 2, y + 22, COL_GRAY);
+            gfx.drawCenteredString(font, "§8для просмотра", px + pw / 2, y + 34, 0xFF555566);
+            learnBtnX    = -1;
+            wheelBtnRowY = -1;
             selectedSpellId = null;
         }
     }
 
-    /**
-     * Рендер детальной информации о выбранной ноде.
-     * Возвращает Y-позицию после всего контента.
-     */
+    /** Угловое L-украшение для панели информации */
+    private void drawPanelCorner(GuiGraphics gfx, int x, int y, int size, boolean left, boolean top) {
+        int dx = left ? 1 : -1;
+        int dy = top  ? 1 : -1;
+        int ex = left ? x + size : x - size;
+        int ey = top  ? y + size : y - size;
+        // Горизонталь
+        gfx.fill(Math.min(x, ex), y, Math.max(x, ex) + 1, y + 1, COL_GOLD_DIM);
+        // Вертикаль
+        gfx.fill(x, Math.min(y, ey), x + 1, Math.max(y, ey) + 1, COL_GOLD_DIM);
+    }
+
+    /** Детальная информация о выбранной ноде */
     private int renderNodeInfo(GuiGraphics gfx, int px, int startY, int pw,
                                 SkillNode node, int mouseX, int mouseY) {
-        // Сбрасываем состояние кнопок в начале каждого кадра —
-        // иначе при смене ноды на ноду без заклинания остаются «призрачные» области
         learnBtnX    = -1;
         wheelBtnRowY = -1;
         selectedSpellId = null;
 
-        int y     = startY;
+        int y = startY;
         boolean unlocked  = unlockedNodes.contains(node.getId());
         boolean available = isAvailable(node);
-
-        int schoolCol = 0xFF000000 | node.getSchool().color;
+        int schoolRgb = 0xFF000000 | node.getSchool().color;
 
         // Название ноды
-        gfx.drawCenteredString(font, node.getName(), px + pw / 2, y, schoolCol);
+        gfx.drawString(font, node.getName(), px + pw / 2 - font.width(node.getName()) / 2 + 1, y + 1, 0x80000000, false);
+        gfx.drawCenteredString(font, node.getName(), px + pw / 2, y, schoolRgb);
         y += 12;
 
         // Школа
         String schoolTxt = node.getSchool() == MagicSchool.NONE
-                ? "§8Нейтральная" : "§8" + node.getSchool().displayName;
+                ? "§8Нейтральная"
+                : "§8" + node.getSchool().displayName;
         gfx.drawCenteredString(font, schoolTxt, px + pw / 2, y, COL_GRAY);
         y += 14;
 
         y = drawSeparator(gfx, px, y, pw, COL_PANEL_BORD);
 
-        // Описание (с переносом)
+        // Описание с переносом
         for (String line : node.getDescription().split("\n")) {
             List<FormattedCharSequence> wrapped = font.split(
                     Component.literal("§7" + line), pw - 14);
@@ -478,11 +780,11 @@ public class SkillTreeScreen extends Screen {
         if (node.getBonusDescription() != null) {
             y = drawSeparator(gfx, px, y, pw, COL_PANEL_BORD);
             gfx.drawCenteredString(font, "§a" + node.getBonusDescription(),
-                    px + pw / 2, y, 0xFF55FF55);
+                    px + pw / 2, y, COL_GREEN);
             y += 14;
         }
 
-        // Информация о заклинании + кнопки «В колесо»
+        // Заклинание + кнопки слотов
         if (node.getSpellId() != null) {
             Spell spell = SpellRegistry.get(node.getSpellId());
             if (spell != null) {
@@ -498,7 +800,6 @@ public class SkillTreeScreen extends Screen {
                         px + pw / 2, y, COL_GRAY);
                 y += 14;
 
-                // Кнопки «В колесо» — только для открытых нод-заклинаний
                 if (unlocked) {
                     y = renderWheelSlotButtons(gfx, px, y, pw, node.getSpellId(), mouseX, mouseY);
                 }
@@ -509,36 +810,41 @@ public class SkillTreeScreen extends Screen {
         y = drawSeparator(gfx, px, y, pw, COL_PANEL_BORD);
         y += 4;
 
-        // Статус / кнопка действия
+        // Статус / кнопка
         if (unlocked) {
-            gfx.drawCenteredString(font, "§a✦ ОТКРЫТО ✦", px + pw / 2, y, COL_GREEN);
+            gfx.drawCenteredString(font, "§a✦  ОТКРЫТО  ✦", px + pw / 2, y, COL_GREEN);
             learnBtnX = -1;
         } else if (available && skillPoints >= node.getCost()) {
-            // Кнопка "Изучить" — активна
+            // Активная кнопка «Изучить»
             int bx = px + 8, bw = pw - 16, bh = 16;
             int by = y;
             boolean hover = mouseX >= bx && mouseX <= bx + bw
                          && mouseY >= by && mouseY <= by + bh;
 
+            // Фон кнопки с эффектом свечения при наведении
             gfx.fill(bx, by, bx + bw, by + bh,
-                    hover ? 0xFF2A5A1A : 0xFF183010);
-            gfx.fill(bx, by, bx + bw, by + 1, 0xFF55AA33);
-            gfx.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF55AA33);
+                    hover ? 0xFF1E4A12 : 0xFF102210);
+            if (hover) {
+                gfx.fill(bx, by, bx + bw, by + 1, 0xFF77CC44);
+                gfx.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF77CC44);
+                gfx.fill(bx, by, bx + 1, by + bh, 0xFF77CC44);
+                gfx.fill(bx + bw - 1, by, bx + bw, by + bh, 0xFF77CC44);
+            } else {
+                gfx.fill(bx, by, bx + bw, by + 1, 0xFF3A7722);
+                gfx.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF3A7722);
+            }
             gfx.drawCenteredString(font,
                     "◆ ИЗУЧИТЬ  (" + node.getCost() + " очко)",
                     bx + bw / 2, by + 4,
-                    hover ? COL_WHITE : COL_GREEN);
+                    hover ? COL_GOLD_BRIGHT : COL_GREEN);
 
-            // Сохраняем позицию кнопки для клика
             learnBtnX = bx; learnBtnY = by; learnBtnW = bw; learnBtnH = bh;
             y += bh + 4;
         } else if (available) {
-            gfx.drawCenteredString(font, "§cНе хватает очков",
-                    px + pw / 2, y, COL_RED);
+            gfx.drawCenteredString(font, "§c✗  Мало очков", px + pw / 2, y, COL_RED);
             learnBtnX = -1;
             y += 14;
         } else {
-            // Нода заблокирована — показываем требования
             gfx.drawCenteredString(font, "§8🔒 Заблокировано", px + pw / 2, y, COL_LOCKED);
             y += 12;
             for (String req : node.getPrerequisites()) {
@@ -556,25 +862,49 @@ public class SkillTreeScreen extends Screen {
     // ─── 5. Заголовок ─────────────────────────────────────────────────────────
 
     private void renderHeader(GuiGraphics gfx) {
-        // Полупрозрачная полоска заголовка
-        gfx.fill(0, 0, treeAreaWidth() + MARGIN, 20, 0xCC080612);
-        gfx.fill(0, 19, treeAreaWidth() + MARGIN, 20, COL_GOLD_DIM);
+        int treeW = treeAreaWidth() + MARGIN;
 
+        // Полупрозрачный тёмный фон заголовка
+        gfx.fill(0, 0, treeW, 22, 0xCC060410);
+
+        // Нижняя линия заголовка (двойная)
+        gfx.fill(0, 20, treeW, 21, COL_GOLD_DIM);
+        gfx.fill(0, 21, treeW, 22, 0x44C9A227);
+
+        // Боковые акценты
+        gfx.fill(0, 0, 2, 22, COL_GOLD_DIM);
+        gfx.fill(treeW - 2, 0, treeW, 22, COL_GOLD_DIM);
+
+        // Заголовок с золотым свечением
         String title = "✦  ДРЕВО  ПОЗНАНИЯ  ✦";
-        gfx.drawCenteredString(font, title, (treeAreaWidth() + MARGIN) / 2, 6, COL_GOLD);
+        int cx = (treeW) / 2;
+        // Тень
+        gfx.drawCenteredString(font, title, cx + 1, 7, 0x80000000);
+        // Основной текст
+        gfx.drawCenteredString(font, title, cx, 6, COL_GOLD);
+
+        // Число открытых нод справа от заголовка
+        int opened = unlockedNodes.size();
+        int total  = SkillTree.getAllNodes().size();
+        String progress = opened + "/" + total;
+        gfx.drawString(font, progress, treeW - font.width(progress) - 8, 7, COL_GOLD_DIM, false);
     }
 
     // ─── Вспомогательные методы рисования ────────────────────────────────────
 
     private int drawSeparator(GuiGraphics gfx, int px, int y, int pw, int col) {
+        // Центральный акцент
         gfx.fill(px + 5, y, px + pw - 5, y + 1, col);
+        // Маленькие точки на концах
+        gfx.fill(px + 4, y - 1, px + 7, y + 2, 0x33C9A227);
+        gfx.fill(px + pw - 7, y - 1, px + pw - 4, y + 2, 0x33C9A227);
         return y + 7;
     }
 
-    /** Нарисовать заполненный круг через горизонтальные отрезки */
+    /** Нарисовать заполненный круг */
     private void drawCircle(GuiGraphics gfx, int cx, int cy, int r, int color) {
         for (int dy = -r; dy <= r; dy++) {
-            int dx = (int) Math.sqrt(Math.max(0.0, (double) r * r - (double) dy * dy));
+            int dx = (int)Math.sqrt(Math.max(0.0, (double)r * r - (double)dy * dy));
             gfx.fill(cx - dx, cy + dy, cx + dx + 1, cy + dy + 1, color);
         }
     }
@@ -585,9 +915,9 @@ public class SkillTreeScreen extends Screen {
             int ri = r - t;
             if (ri <= 0) break;
             for (int dy = -ri; dy <= ri; dy++) {
-                int dxO = (int) Math.sqrt(Math.max(0.0, (double) ri * ri - (double) dy * dy));
+                int dxO = (int)Math.sqrt(Math.max(0.0, (double)ri * ri - (double)dy * dy));
                 int dxI = (ri > 1)
-                        ? (int) Math.sqrt(Math.max(0.0, (double)(ri - 1) * (ri - 1) - (double) dy * dy))
+                        ? (int)Math.sqrt(Math.max(0.0, (double)(ri - 1) * (ri - 1) - (double)dy * dy))
                         : 0;
                 if (dxO > dxI) {
                     gfx.fill(cx - dxO, cy + dy, cx - dxI, cy + dy + 1, color);
@@ -597,16 +927,56 @@ public class SkillTreeScreen extends Screen {
         }
     }
 
-    /** Мягкий круглый ореол (концентрические круги убывающей прозрачности) */
+    /** Мягкий круглый ореол — концентрические круги убывающей прозрачности */
     private void renderGlow(GuiGraphics gfx, int cx, int cy, int radius, int rgb, int maxAlpha) {
         int base = rgb & 0xFFFFFF;
-        for (int r = radius; r > 0; r -= 3) {
-            int alpha = maxAlpha * (radius - r) / radius;
+        int step = Math.max(2, radius / 10);
+        for (int r = radius; r > 0; r -= step) {
+            float t = 1.0f - (float)r / radius;
+            int alpha = (int)(maxAlpha * t * t);
             drawCircle(gfx, cx, cy, r, (alpha << 24) | base);
         }
     }
 
-    /** Нарисовать линию из пикселей (Bresenham-style через fill) */
+    /** Нарисовать правильный многоугольник */
+    private void drawPolygon(GuiGraphics gfx, int cx, int cy, int r, int sides,
+                              float angleOffset, int color, int lineWidth) {
+        for (int i = 0; i < sides; i++) {
+            double a1 = angleOffset + i * 2.0 * Math.PI / sides;
+            double a2 = angleOffset + (i + 1) * 2.0 * Math.PI / sides;
+            int x1 = cx + (int)(Math.cos(a1) * r);
+            int y1 = cy + (int)(Math.sin(a1) * r);
+            int x2 = cx + (int)(Math.cos(a2) * r);
+            int y2 = cy + (int)(Math.sin(a2) * r);
+            drawLine(gfx, x1, y1, x2, y2, color, lineWidth);
+        }
+    }
+
+    /**
+     * Пунктирная окружность — для декоративных колец.
+     * @param dashes количество сегментов (чётное)
+     */
+    private void drawDashedCircle(GuiGraphics gfx, int cx, int cy, int r,
+                                   int rgb, int alpha, int dashes) {
+        int color = (alpha << 24) | (rgb & 0xFFFFFF);
+        // Угловой шаг между точками окружности в радианах
+        double totalAngle = 2.0 * Math.PI;
+        double step = 0.04; // шаг по углу
+        double dashLen = totalAngle / dashes;
+        double gapFrac = 0.45; // доля длины пунктира занимаемая пробелом
+
+        for (int d = 0; d < dashes; d++) {
+            double startA = d * dashLen;
+            double endA   = startA + dashLen * (1.0 - gapFrac);
+            for (double a = startA; a < endA; a += step) {
+                int x = cx + (int)(Math.cos(a) * r);
+                int y = cy + (int)(Math.sin(a) * r);
+                gfx.fill(x, y, x + 1, y + 1, color);
+            }
+        }
+    }
+
+    /** Нарисовать линию пикселями (алгоритм Брезенхема через fill) */
     private void drawLine(GuiGraphics gfx, int x1, int y1, int x2, int y2, int color, int w) {
         int dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
         int steps = Math.max(dx, dy);
@@ -636,7 +1006,7 @@ public class SkillTreeScreen extends Screen {
         return Math.abs(mouseX - sx) <= r && Math.abs(mouseY - sy) <= r;
     }
 
-    // ─── Обновление данных из capability ─────────────────────────────────────
+    // ─── Синхронизация с capability ───────────────────────────────────────────
 
     private void refreshSkillData() {
         Minecraft mc = Minecraft.getInstance();
@@ -656,7 +1026,7 @@ public class SkillTreeScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
 
-            // Клик по кнопкам «В колесо» (назначение заклинания в слот)
+            // Кнопки «В колесо»
             if (wheelBtnRowY >= 0 && selectedSpellId != null) {
                 final int BTN_W = 17, BTN_H = 13, GAP = 2;
                 int px2  = treeAreaWidth() + MARGIN * 2;
@@ -672,19 +1042,16 @@ public class SkillTreeScreen extends Screen {
 
                     if (mouseX >= bx && mouseX <= bx + BTN_W
                             && mouseY >= by && mouseY <= by + BTN_H) {
-                        // Если это заклинание уже назначено в данный слот — убираем его (toggle).
-                        // Иначе назначаем.
                         String currentInSlot = (i < spellSlots.length) ? spellSlots[i] : null;
                         String newSpellId = selectedSpellId.equals(currentInSlot)
                                 ? null : selectedSpellId;
-                        ModNetwork.CHANNEL.sendToServer(
-                                new SpellSlotPacket(i, newSpellId));
+                        ModNetwork.CHANNEL.sendToServer(new SpellSlotPacket(i, newSpellId));
                         return true;
                     }
                 }
             }
 
-            // Клик по кнопке «Изучить»
+            // Кнопка «Изучить»
             if (learnBtnX >= 0 && selectedNode != null
                     && mouseX >= learnBtnX && mouseX <= learnBtnX + learnBtnW
                     && mouseY >= learnBtnY && mouseY <= learnBtnY + learnBtnH) {
@@ -692,15 +1059,15 @@ public class SkillTreeScreen extends Screen {
                 return true;
             }
 
-            // Клик по ноде (только в области дерева)
+            // Клик по ноде
             if (mouseX <= treeAreaWidth() + MARGIN) {
                 for (SkillNode node : SkillTree.getAllNodes()) {
-                    if (isHovered(node, (int) mouseX, (int) mouseY)) {
+                    if (isHovered(node, (int)mouseX, (int)mouseY)) {
                         selectedNode = node;
                         return true;
                     }
                 }
-                selectedNode = null; // клик в пустоту
+                selectedNode = null;
             }
         }
 
@@ -735,8 +1102,7 @@ public class SkillTreeScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (mouseX <= treeAreaWidth() + MARGIN) {
             float oldZoom = zoom;
-            zoom = Math.max(0.28f, Math.min(2.2f, zoom + (float) delta * 0.08f));
-            // Зум относительно позиции курсора
+            zoom = Math.max(0.25f, Math.min(2.5f, zoom + (float)delta * 0.08f));
             camX = (float)(mouseX - (mouseX - camX) * (zoom / oldZoom));
             camY = (float)(mouseY - (mouseY - camY) * (zoom / oldZoom));
         }
@@ -751,11 +1117,6 @@ public class SkillTreeScreen extends Screen {
 
     // ─── Кнопки назначения в слоты колеса ────────────────────────────────────
 
-    /**
-     * Рисует 10 маленьких кнопок «В колесо» (2 ряда по 5).
-     * Кнопки подсвечиваются если данное заклинание уже назначено в слот.
-     * Возвращает обновлённый Y.
-     */
     private int renderWheelSlotButtons(GuiGraphics gfx, int px, int y, int pw,
                                         String spellId, int mouseX, int mouseY) {
         y = drawSeparator(gfx, px, y, pw, COL_PANEL_BORD);
@@ -763,11 +1124,9 @@ public class SkillTreeScreen extends Screen {
         y += 11;
 
         final int BTN_W = 17, BTN_H = 13, GAP = 2;
-        // 5 кнопок в ряд, 2 ряда
-        int rowW = 5 * BTN_W + 4 * GAP;
+        int rowW   = 5 * BTN_W + 4 * GAP;
         int startX = px + (pw - rowW) / 2;
 
-        // Запоминаем Y для обработки кликов
         wheelBtnRowY    = y;
         selectedSpellId = spellId;
 
@@ -780,30 +1139,27 @@ public class SkillTreeScreen extends Screen {
             boolean isAssigned    = spellId.equals(spellSlots[i]);
             boolean hovered       = mouseX >= bx && mouseX <= bx + BTN_W
                                  && mouseY >= by && mouseY <= by + BTN_H;
-            // При наведении на уже назначенный слот — показываем красный (подсказка: клик уберёт)
             boolean hoverAssigned = isAssigned && hovered;
 
             int bgCol  = isAssigned
-                    ? (hoverAssigned ? 0xFF301616 : 0xFF163016)
-                    : (hovered       ? 0xFF181828 : 0xFF0D0D1C);
+                    ? (hoverAssigned ? 0xFF301616 : 0xFF122612)
+                    : (hovered       ? 0xFF161628 : 0xFF0A0A1A);
             int rimCol = isAssigned
-                    ? (hoverAssigned ? 0xFFAA3333 : 0xFF55AA33)
-                    : (hovered       ? 0xFF6666AA : 0xFF2A2A44);
+                    ? (hoverAssigned ? 0xFFAA3333 : 0xFF44AA22)
+                    : (hovered       ? 0xFF5555AA : 0xFF222240);
             int txtCol = isAssigned
                     ? (hoverAssigned ? COL_RED  : COL_GREEN)
                     : (hovered       ? COL_WHITE : COL_GRAY);
 
-            // Фон кнопки
             gfx.fill(bx, by, bx + BTN_W, by + BTN_H, bgCol);
-            // Рамка
             gfx.fill(bx, by, bx + BTN_W, by + 1, rimCol);
             gfx.fill(bx, by + BTN_H - 1, bx + BTN_W, by + BTN_H, rimCol);
             gfx.fill(bx, by, bx + 1, by + BTN_H, rimCol);
             gfx.fill(bx + BTN_W - 1, by, bx + BTN_W, by + BTN_H, rimCol);
-            // Номер
             gfx.drawCenteredString(font, String.valueOf(i + 1),
                     bx + BTN_W / 2, by + 2, txtCol);
         }
+
         y += 2 * (BTN_H + GAP) + 4;
         return y;
     }
